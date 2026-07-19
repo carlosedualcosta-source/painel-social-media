@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type TouchEvent as ReactTouchEvent } from "react";
 
 type Role = "admin" | "gestor" | "cliente";
 type View = "home" | "projetos" | "novoProjeto" | "usuarios" | "configuracoes";
@@ -63,6 +63,10 @@ const icons = {
   arrowRight: "M5 12h14M12 5l7 7-7 7",
   edit: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z",
   close: "M18 6L6 18M6 6l12 12",
+  grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
+  chevronLeft: "M15 18l-6-6 6-6",
+  chevronRight: "M9 18l6-6-6-6",
+  layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
 };
 
 const navItems: Array<{ id: View; label: string; icon: string; managerOnly?: boolean }> = [
@@ -415,6 +419,7 @@ function ProjectsView(props: {
 }) {
   const [dragActive, setDragActive] = useState(false);
   const [showProjectList, setShowProjectList] = useState(false);
+  const [showFeedPreview, setShowFeedPreview] = useState(false);
 
   const grouped = useMemo(() => {
     const map = new Map<string, { client: Client; projects: Project[] }>();
@@ -482,12 +487,15 @@ function ProjectsView(props: {
               <p className="text-[11px] font-semibold uppercase tracking-widest text-muted font-display">{props.activeProject.name}</p>
               <input className="field mt-1 max-w-full sm:max-w-[280px] font-display font-semibold" defaultValue={props.activePost.title} disabled={!props.canManage} key={props.activePost.id} onBlur={(e) => props.savePostTitle(e.target.value)} />
             </div>
-            {props.canManage && (
-              <div className="flex gap-2">
-                <button className="btn btn-outline text-xs flex-1 sm:flex-none" disabled={props.postMutation !== null} onClick={props.createPost}><Ic d={icons.plus} size={14} /> <span className="hidden xs:inline">Novo</span> post</button>
-                <button className="btn btn-danger text-xs" disabled={props.postMutation !== null} onClick={props.deletePost}><Ic d={icons.trash} size={14} /></button>
-              </div>
-            )}
+            <div className="flex gap-2">
+              <button className="btn btn-outline text-xs" onClick={() => setShowFeedPreview(true)}><Ic d={icons.grid} size={14} /> Ver feed</button>
+              {props.canManage && (
+                <>
+                  <button className="btn btn-outline text-xs flex-1 sm:flex-none" disabled={props.postMutation !== null} onClick={props.createPost}><Ic d={icons.plus} size={14} /> <span className="hidden xs:inline">Novo</span> post</button>
+                  <button className="btn btn-danger text-xs" disabled={props.postMutation !== null} onClick={props.deletePost}><Ic d={icons.trash} size={14} /></button>
+                </>
+              )}
+            </div>
           </div>
           <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
             {props.activeProject.posts.map((post) => (
@@ -630,7 +638,156 @@ function ProjectsView(props: {
             <button className="btn btn-primary mt-2 w-full" onClick={props.addComment}><Ic d={icons.send} size={15} /> Enviar</button>
           </div>
         </div>
+        {showFeedPreview && <FeedPreview posts={props.activeProject.posts} projectName={props.activeProject.name} onClose={() => setShowFeedPreview(false)} />}
       </div>
+    </div>
+  );
+}
+
+/* ──────────────────── FEED PREVIEW ──────────────────── */
+
+function FeedCarouselCell({ media }: { media: MediaAsset[] }) {
+  const [idx, setIdx] = useState(0);
+  const touchStart = useRef(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  function handleTouchStart(e: ReactTouchEvent) { touchStart.current = e.touches[0].clientX; }
+  function handleTouchEnd(e: ReactTouchEvent) {
+    const diff = touchStart.current - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 40) {
+      if (diff > 0 && idx < media.length - 1) setIdx(idx + 1);
+      if (diff < 0 && idx > 0) setIdx(idx - 1);
+    }
+  }
+
+  if (media.length === 0) return (
+    <div className="feed-cell bg-sunken flex items-center justify-center">
+      <span className="text-muted"><Ic d={icons.image} size={28} /></span>
+    </div>
+  );
+
+  return (
+    <div className="feed-cell relative overflow-hidden group" ref={containerRef} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+      <div className="feed-carousel" style={{ transform: `translateX(-${idx * 100}%)` }}>
+        {media.map((m) => (
+          <div key={m.id} className="feed-carousel-slide">
+            {m.type === "image" ? <img src={m.url} alt={m.name} className="h-full w-full object-cover" /> : <video src={m.url} className="h-full w-full object-cover" muted />}
+          </div>
+        ))}
+      </div>
+      {media.length > 1 && (
+        <>
+          {idx > 0 && <button className="feed-nav feed-nav-left opacity-0 group-hover:opacity-100" onClick={() => setIdx(idx - 1)}><Ic d={icons.chevronLeft} size={16} /></button>}
+          {idx < media.length - 1 && <button className="feed-nav feed-nav-right opacity-0 group-hover:opacity-100" onClick={() => setIdx(idx + 1)}><Ic d={icons.chevronRight} size={16} /></button>}
+          <div className="feed-dots">
+            {media.map((_, i) => <span key={i} className={`feed-dot ${i === idx ? "active" : ""}`} />)}
+          </div>
+          <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-black/50 px-1.5 py-0.5 text-[10px] text-white font-semibold pointer-events-none">
+            <Ic d={icons.layers} size={10} /> {idx + 1}/{media.length}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function FeedPreview({ posts, projectName, onClose }: { posts: Post[]; projectName: string; onClose: () => void }) {
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [carouselIdx, setCarouselIdx] = useState(0);
+  const touchStart = useRef(0);
+
+  const feedPosts = posts.map((p) => ({ post: p, media: p.formats.feed.media }));
+
+  function openPost(post: Post) { setSelectedPost(post); setCarouselIdx(0); }
+
+  function handleTouchStart(e: ReactTouchEvent) { touchStart.current = e.touches[0].clientX; }
+  function handleTouchEnd(e: ReactTouchEvent) {
+    if (!selectedPost) return;
+    const media = selectedPost.formats.feed.media;
+    const diff = touchStart.current - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 40) {
+      if (diff > 0 && carouselIdx < media.length - 1) setCarouselIdx(carouselIdx + 1);
+      if (diff < 0 && carouselIdx > 0) setCarouselIdx(carouselIdx - 1);
+    }
+  }
+
+  return (
+    <div className="feed-overlay" onClick={onClose}>
+      <div className="feed-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="feed-modal-header">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#f09433] via-[#e6683c] to-[#dc2743]">
+              <A1Logo className="h-4 w-auto" white />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">{projectName}</p>
+              <p className="text-[11px] text-muted">Preview do feed</p>
+            </div>
+          </div>
+          <button className="btn btn-ghost p-2" onClick={onClose}><Ic d={icons.close} size={18} /></button>
+        </div>
+
+        <div className="feed-grid">
+          {feedPosts.map(({ post, media }) => (
+            <button key={post.id} className="feed-cell-btn" onClick={() => openPost(post)}>
+              <FeedCarouselCell media={media} />
+              {media.length > 1 && (
+                <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 rounded-sm bg-black/50 px-1 py-0.5 text-[9px] text-white pointer-events-none z-10">
+                  <Ic d={icons.layers} size={9} />
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {selectedPost && (
+        <div className="feed-detail-overlay" onClick={() => setSelectedPost(null)}>
+          <div className="feed-detail" onClick={(e) => e.stopPropagation()}>
+            <div className="feed-detail-header">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#f09433] via-[#e6683c] to-[#dc2743]">
+                  <A1Logo className="h-4 w-auto" white />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">{projectName}</p>
+                  <p className="text-[11px] text-muted">#{String(selectedPost.number).padStart(2, "0")} &middot; {selectedPost.title}</p>
+                </div>
+              </div>
+              <button className="btn btn-ghost p-2" onClick={() => setSelectedPost(null)}><Ic d={icons.close} size={18} /></button>
+            </div>
+            <div className="feed-detail-media" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+              {selectedPost.formats.feed.media.length === 0 ? (
+                <div className="flex h-full items-center justify-center bg-sunken"><span className="text-muted"><Ic d={icons.image} size={48} /></span></div>
+              ) : (
+                <>
+                  <div className="feed-carousel" style={{ transform: `translateX(-${carouselIdx * 100}%)` }}>
+                    {selectedPost.formats.feed.media.map((m) => (
+                      <div key={m.id} className="feed-carousel-slide">
+                        {m.type === "image" ? <img src={m.url} alt={m.name} className="h-full w-full object-contain bg-black" /> : <video src={m.url} className="h-full w-full object-contain bg-black" controls />}
+                      </div>
+                    ))}
+                  </div>
+                  {selectedPost.formats.feed.media.length > 1 && (
+                    <>
+                      {carouselIdx > 0 && <button className="feed-nav feed-nav-left" onClick={() => setCarouselIdx(carouselIdx - 1)}><Ic d={icons.chevronLeft} size={20} /></button>}
+                      {carouselIdx < selectedPost.formats.feed.media.length - 1 && <button className="feed-nav feed-nav-right" onClick={() => setCarouselIdx(carouselIdx + 1)}><Ic d={icons.chevronRight} size={20} /></button>}
+                      <div className="feed-dots">
+                        {selectedPost.formats.feed.media.map((_, i) => <span key={i} className={`feed-dot ${i === carouselIdx ? "active" : ""}`} />)}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+            {selectedPost.formats.feed.copy && (
+              <div className="feed-detail-copy">
+                <p className="text-sm leading-relaxed"><span className="font-semibold mr-1.5">{projectName.toLowerCase().replace(/\s+/g, "")}</span>{selectedPost.formats.feed.copy}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
