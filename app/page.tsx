@@ -80,8 +80,8 @@ export default function Home() {
   const [activeProjectId, setActiveProjectId] = useState("");
   const [activePostId, setActivePostId] = useState("");
   const [activeFormat, setActiveFormat] = useState<FormatKey>("feed");
-  const [loginEmail, setLoginEmail] = useState("gestor@painel.com");
-  const [loginPassword, setLoginPassword] = useState("gestor123");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [commentDraft, setCommentDraft] = useState("");
   const [postMutation, setPostMutation] = useState<"create" | "delete" | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -223,10 +223,6 @@ export default function Home() {
             </label>
             {error && <p className="mt-3 rounded-lg bg-[var(--danger-bg)] px-3 py-2 text-sm text-[var(--danger-text)]">{error}</p>}
             <button className="btn btn-primary mt-7 w-full py-3 text-[15px]">Entrar</button>
-            <div className="mt-8 space-y-1 rounded-xl border border-outline bg-sunken p-4 text-xs text-muted leading-6">
-              <p><strong className="text-on-surface">Gestor:</strong> gestor@painel.com / gestor123</p>
-              <p><strong className="text-on-surface">Cliente:</strong> cliente01@painel.com / cliente123</p>
-            </div>
           </form>
         </div>
       </main>
