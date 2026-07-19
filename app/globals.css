@@ -549,7 +549,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .feed-cell {
-  aspect-ratio: 1;
+  aspect-ratio: var(--feed-aspect, 4/5);
   background: var(--surface-sunken);
   overflow: hidden;
   position: relative;

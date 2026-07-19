@@ -343,7 +343,7 @@ export async function POST(request: Request) {
       const result = await db.execute({ sql: "SELECT * FROM users WHERE lower(email) = ?", args: [email] });
       const row = result.rows[0] as unknown as UserRow | undefined;
       if (!row || row.password_hash !== hashPassword(password)) {
-        return json({ error: "Email ou senha invalidos." }, { status: 401 });
+        return json({ error: "Email ou senha inválidos." }, { status: 401 });
       }
       const token = `${crypto.randomUUID()}-${crypto.randomUUID()}`;
       await db.execute({ sql: "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)", args: [token, row.id, Date.now() + 1000 * 60 * 60 * 24 * 30] });
@@ -359,10 +359,10 @@ export async function POST(request: Request) {
     }
 
     const user = await currentUser(request);
-    if (!user) return json({ error: "Login necessario." }, { status: 401 });
+    if (!user) return json({ error: "Login necessário." }, { status: 401 });
 
     if (action === "createUser") {
-      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
       const name = String(payload.name ?? "").trim();
       const email = String(payload.email ?? "").trim().toLowerCase();
       const password = String(payload.password ?? "");
@@ -376,7 +376,7 @@ export async function POST(request: Request) {
     }
 
     if (action === "updateUser") {
-      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
       const userId = String(payload.userId ?? "");
       const name = String(payload.name ?? "").trim();
       const email = String(payload.email ?? "").trim().toLowerCase();
@@ -394,9 +394,9 @@ export async function POST(request: Request) {
     }
 
     if (action === "deleteUser") {
-      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
       const userId = String(payload.userId ?? "");
-      if (userId === user.id) return json({ error: "Voce nao pode apagar seu proprio usuario." }, { status: 400 });
+      if (userId === user.id) return json({ error: "Você não pode apagar seu próprio usuário." }, { status: 400 });
       await db.batch([
         { sql: "DELETE FROM sessions WHERE user_id = ?", args: [userId] },
         { sql: "DELETE FROM users WHERE id = ?", args: [userId] },
@@ -405,7 +405,7 @@ export async function POST(request: Request) {
     }
 
     if (action === "createClient") {
-      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
       const name = String(payload.name ?? "").trim();
       const tag = String(payload.tag ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       if (!name) return json({ error: "Informe o nome do cliente." }, { status: 400 });
@@ -414,7 +414,7 @@ export async function POST(request: Request) {
     }
 
     if (action === "createProject") {
-      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
       const name = String(payload.name ?? "").trim();
       const period = String(payload.period ?? name).trim();
       const clientId = String(payload.clientId ?? "");
@@ -425,10 +425,10 @@ export async function POST(request: Request) {
     }
 
     if (action === "createPost") {
-      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
       const projectId = String(payload.projectId ?? "");
       const projectResult = await db.execute({ sql: "SELECT * FROM projects WHERE id = ?", args: [projectId] });
-      if (projectResult.rows.length === 0) return json({ error: "Projeto nao encontrado." }, { status: 404 });
+      if (projectResult.rows.length === 0) return json({ error: "Projeto não encontrado." }, { status: 404 });
       const maxResult = await db.execute({ sql: "SELECT MAX(number) as max_number FROM posts WHERE project_id = ?", args: [projectId] });
       const nextNumber = (Number(maxResult.rows[0]?.max_number) || 0) + 1;
       const postId = await createPostRows(projectId, nextNumber);
@@ -437,10 +437,10 @@ export async function POST(request: Request) {
     }
 
     if (action === "deletePost") {
-      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
       const postId = String(payload.postId ?? "");
       const postResult = await db.execute({ sql: "SELECT project_id FROM posts WHERE id = ?", args: [postId] });
-      if (postResult.rows.length === 0) return json({ error: "Post nao encontrado." }, { status: 404 });
+      if (postResult.rows.length === 0) return json({ error: "Post não encontrado." }, { status: 404 });
       const projectId = postResult.rows[0].project_id as string;
       const fmtResult = await db.execute({ sql: "SELECT id FROM post_formats WHERE post_id = ?", args: [postId] });
       const stmts: InStatement[] = [];
@@ -456,7 +456,7 @@ export async function POST(request: Request) {
     }
 
     if (action === "updatePost") {
-      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
       await db.execute({ sql: "UPDATE posts SET title = ? WHERE id = ?", args: [String(payload.title ?? ""), String(payload.postId ?? "")] });
       return json(await loadAppData(user));
     }
@@ -469,11 +469,13 @@ export async function POST(request: Request) {
     if (action === "updateFormat") {
       const formatId = String(payload.formatId ?? "");
       const clientId = await formatClientId(formatId);
-      if (!clientId || !canAccessClient(user, clientId)) return json({ error: "Sem permissao." }, { status: 403 });
+      if (!clientId || !canAccessClient(user, clientId)) return json({ error: "Sem permissão." }, { status: 403 });
 
       const oldFmt = (await db.execute({ sql: "SELECT status FROM post_formats WHERE id = ?", args: [formatId] })).rows[0];
       const oldStatus = oldFmt?.status as string;
       const newStatus = String(payload.status ?? oldStatus);
+
+      const oldFmtFull = (await db.execute({ sql: "SELECT * FROM post_formats WHERE id = ?", args: [formatId] })).rows[0];
 
       if (canManage(user)) {
         await db.execute({
@@ -481,20 +483,41 @@ export async function POST(request: Request) {
           args: [String(payload.copy ?? ""), String(payload.copyNotes ?? ""), String(payload.teamNotes ?? ""), newStatus, formatId],
         });
       } else {
-        if (!["aprovado", "alteracao"].includes(newStatus)) return json({ error: "Clientes so podem aprovar ou pedir alteracao." }, { status: 403 });
-        await db.execute({ sql: "UPDATE post_formats SET status = ? WHERE id = ?", args: [newStatus, formatId] });
+        if (payload.copyNotes !== undefined || payload.teamNotes !== undefined) {
+          await db.execute({
+            sql: "UPDATE post_formats SET copy_notes = ?, team_notes = ?, status = ? WHERE id = ?",
+            args: [String(payload.copyNotes ?? oldFmtFull?.copy_notes ?? ""), String(payload.teamNotes ?? oldFmtFull?.team_notes ?? ""), newStatus === oldStatus ? oldStatus : (["aprovado", "alteracao", "em_revisao"].includes(newStatus) ? newStatus : oldStatus), formatId],
+          });
+        } else if (newStatus !== oldStatus) {
+          if (!["aprovado", "alteracao"].includes(newStatus)) return json({ error: "Clientes só podem aprovar ou pedir alteração." }, { status: 403 });
+          await db.execute({ sql: "UPDATE post_formats SET status = ? WHERE id = ?", args: [newStatus, formatId] });
+        }
       }
 
-      if (newStatus !== oldStatus) {
-        const ctx = (await db.execute({ sql: "SELECT posts.title, posts.id as post_id, projects.name as project_name, projects.id as project_id, projects.client_id FROM post_formats JOIN posts ON posts.id = post_formats.post_id JOIN projects ON projects.id = posts.project_id WHERE post_formats.id = ?", args: [formatId] })).rows[0];
-        if (ctx) {
-          const statusLabel = newStatus === "aprovado" ? "aprovado" : newStatus === "alteracao" ? "alteracao solicitada" : newStatus === "em_revisao" ? "enviado para revisao" : newStatus;
+      const ctx = (await db.execute({ sql: "SELECT posts.title, posts.id as post_id, projects.name as project_name, projects.id as project_id, projects.client_id FROM post_formats JOIN posts ON posts.id = post_formats.post_id JOIN projects ON projects.id = posts.project_id WHERE post_formats.id = ?", args: [formatId] })).rows[0];
+
+      if (newStatus !== oldStatus && ctx) {
+        const statusLabel = newStatus === "aprovado" ? "aprovado" : newStatus === "alteracao" ? "alteração solicitada" : newStatus === "em_revisao" ? "enviado para revisão" : newStatus;
+        if (canManage(user)) {
+          const clientUsers = await getUsersForClient(ctx.client_id as string);
+          await notify(clientUsers, "status", `Post ${statusLabel}`, `"${ctx.title}" em ${ctx.project_name} foi ${statusLabel}.`, ctx.project_id as string, ctx.post_id as string);
+        } else {
+          const managers = await getManagerIds();
+          await notify(managers, "status", `Cliente ${newStatus === "aprovado" ? "aprovou" : "pediu alteração"}`, `${user.name} ${newStatus === "aprovado" ? "aprovou" : "pediu alteração em"} "${ctx.title}" (${ctx.project_name}).`, ctx.project_id as string, ctx.post_id as string);
+        }
+      }
+
+      if (ctx) {
+        const hasCopyNotes = payload.copyNotes !== undefined && String(payload.copyNotes) !== String(oldFmtFull?.copy_notes ?? "");
+        const hasTeamNotes = payload.teamNotes !== undefined && String(payload.teamNotes) !== String(oldFmtFull?.team_notes ?? "");
+        if (hasCopyNotes || hasTeamNotes) {
+          const field = hasCopyNotes ? "obs. do texto" : "obs. da imagem";
           if (canManage(user)) {
             const clientUsers = await getUsersForClient(ctx.client_id as string);
-            await notify(clientUsers, "status", `Post ${statusLabel}`, `"${ctx.title}" em ${ctx.project_name} foi ${statusLabel}.`, ctx.project_id as string, ctx.post_id as string);
+            await notify(clientUsers, "comment", `Observação atualizada`, `Gestor editou ${field} em "${ctx.title}" (${ctx.project_name}).`, ctx.project_id as string, ctx.post_id as string);
           } else {
             const managers = await getManagerIds();
-            await notify(managers, "status", `Cliente ${newStatus === "aprovado" ? "aprovou" : "pediu alteracao"}`, `${user.name} ${newStatus === "aprovado" ? "aprovou" : "pediu alteracao em"} "${ctx.title}" (${ctx.project_name}).`, ctx.project_id as string, ctx.post_id as string);
+            await notify(managers, "comment", `Observação atualizada`, `${user.name} editou ${field} em "${ctx.title}" (${ctx.project_name}).`, ctx.project_id as string, ctx.post_id as string);
           }
         }
       }
@@ -503,13 +526,13 @@ export async function POST(request: Request) {
     }
 
     if (action === "updateMediaNotes") {
-      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
       await db.execute({ sql: "UPDATE media SET image_notes = ? WHERE id = ?", args: [String(payload.imageNotes ?? ""), String(payload.mediaId ?? "")] });
       return json(await loadAppData(user));
     }
 
     if (action === "deleteMedia") {
-      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
       const mediaId = String(payload.mediaId ?? "");
       const mediaResult = await db.execute({ sql: "SELECT url FROM media WHERE id = ?", args: [mediaId] });
       if (mediaResult.rows[0]?.url) {
@@ -524,7 +547,7 @@ export async function POST(request: Request) {
       const formatId = String(payload.formatId ?? "");
       const clientId = await formatClientId(formatId);
       const text = String(payload.text ?? "").trim();
-      if (!clientId || !canAccessClient(user, clientId)) return json({ error: "Sem permissao." }, { status: 403 });
+      if (!clientId || !canAccessClient(user, clientId)) return json({ error: "Sem permissão." }, { status: 403 });
       if (!text) return json({ error: "Escreva uma mensagem." }, { status: 400 });
       await db.batch([
         { sql: "INSERT INTO comments (id, format_id, user_id, text) VALUES (?, ?, ?, ?)", args: [genId("comment"), formatId, user.id, text] },
@@ -546,7 +569,25 @@ export async function POST(request: Request) {
       return json(await loadAppData(user));
     }
 
-    return json({ error: "Acao desconhecida." }, { status: 400 });
+    if (action === "deleteProjectMedia") {
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
+      const projectId = String(payload.projectId ?? "");
+      const postRows = (await db.execute({ sql: "SELECT id FROM posts WHERE project_id = ?", args: [projectId] })).rows;
+      const postIds = postRows.map((p) => p.id as string);
+      if (postIds.length === 0) return json(await loadAppData(user));
+      const fmtRows = (await db.execute({ sql: `SELECT id FROM post_formats WHERE post_id IN (${postIds.map(() => "?").join(",")})`, args: postIds })).rows;
+      const fmtIds = fmtRows.map((f) => f.id as string);
+      if (fmtIds.length === 0) return json(await loadAppData(user));
+      const mediaResult = await db.execute({ sql: `SELECT url FROM media WHERE format_id IN (${fmtIds.map(() => "?").join(",")})`, args: fmtIds });
+      const { deleteFile } = await import("@/lib/storage");
+      for (const row of mediaResult.rows) {
+        if (row.url) await deleteFile(String(row.url)).catch(() => {});
+      }
+      await db.execute({ sql: `DELETE FROM media WHERE format_id IN (${fmtIds.map(() => "?").join(",")})`, args: fmtIds });
+      return json(await loadAppData(user));
+    }
+
+    return json({ error: "Ação desconhecida." }, { status: 400 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro inesperado.";
     return json({ error: message }, { status: 500 });

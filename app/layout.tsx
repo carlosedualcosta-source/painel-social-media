@@ -15,12 +15,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "A1 Studio — Painel Social Media",
+  title: "A1 Studio | Painel Social Media",
   description:
-    "Projetos por cliente com Feed, Story, Video/Reels, aprovacoes e alteracoes por formato.",
+    "Gerencie projetos de redes sociais com aprovações, alterações e comunicação por formato.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
+    apple: "/favicon.svg",
   },
 };
 

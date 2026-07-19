@@ -60,13 +60,13 @@ export async function POST(request: Request) {
   try {
     const user = await currentUser(request);
     if (!user || !canManage(user)) {
-      return Response.json({ error: "Sem permissao para subir arquivos." }, { status: 403 });
+      return Response.json({ error: "Sem permissão para subir arquivos." }, { status: 403 });
     }
 
     const form = await request.formData();
     const formatId = String(form.get("formatId") ?? "");
     const clientId = await formatClientId(formatId);
-    if (!clientId) return Response.json({ error: "Formato nao encontrado." }, { status: 404 });
+    if (!clientId) return Response.json({ error: "Formato não encontrado." }, { status: 404 });
 
     const files = form.getAll("files").filter(
       (item): item is File => typeof item === "object" && "name" in item && "arrayBuffer" in item
@@ -96,7 +96,7 @@ export async function POST(request: Request) {
     }
 
     if (created.length === 0) {
-      return Response.json({ error: "Nenhuma midia valida foi encontrada. Use imagem ou video." }, { status: 400 });
+      return Response.json({ error: "Nenhuma mídia válida foi encontrada. Use imagem ou vídeo." }, { status: 400 });
     }
 
     const ctx = (await db.execute({ sql: "SELECT posts.title, posts.id as post_id, projects.name as project_name, projects.id as project_id, projects.client_id FROM post_formats JOIN posts ON posts.id = post_formats.post_id JOIN projects ON projects.id = posts.project_id WHERE post_formats.id = ?", args: [formatId] })).rows[0];

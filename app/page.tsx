@@ -19,7 +19,7 @@ type AppData = { user: User | null; users: User[]; clients: Client[]; projects: 
 
 const emptyData: AppData = { user: null, users: [], clients: [], projects: [], notifications: [] };
 const formatLabels: Record<FormatKey, string> = { feed: "Feed", story: "Story", video: "Video/Reels" };
-const statusLabels: Record<ApprovalStatus, string> = { rascunho: "Rascunho", em_revisao: "Em revisao", alteracao: "Alteracao", aprovado: "Aprovado" };
+const statusLabels: Record<ApprovalStatus, string> = { rascunho: "Rascunho", em_revisao: "Em revisão", alteracao: "Alteração", aprovado: "Aprovado" };
 
 function isMediaFile(file: File) {
   const type = file.type.toLowerCase();
@@ -69,12 +69,13 @@ const icons = {
   chevronRight: "M9 18l6-6-6-6",
   layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
   bell: "M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0",
+  download: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3",
 };
 
 const navItems: Array<{ id: View; label: string; icon: string; managerOnly?: boolean }> = [
   { id: "home", label: "Home", icon: "home" },
   { id: "projetos", label: "Projetos", icon: "folder" },
-  { id: "usuarios", label: "Usuarios", icon: "users", managerOnly: true },
+  { id: "usuarios", label: "Usuários", icon: "users", managerOnly: true },
   { id: "configuracoes", label: "Config.", icon: "settings" },
 ];
 
@@ -145,7 +146,7 @@ export default function Home() {
     setError("");
     const res = await fetch("/api/app", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ action: name, ...payload }) });
     const d = await res.json();
-    if (!res.ok) { setError(d.error ?? "Nao foi possivel salvar."); return null; }
+    if (!res.ok) { setError(d.error ?? "Não foi possível salvar."); return null; }
     if (d.projects || d.user !== undefined) setData(d);
     return d;
   }
@@ -350,11 +351,8 @@ export default function Home() {
 
           {/* Footer */}
           <footer className="border-t border-outline bg-raised px-4 py-3 sm:px-6 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <A1Logo className="h-4 w-auto opacity-40" />
-              <span className="text-[11px] text-muted font-display tracking-wider uppercase hidden sm:inline">A1 Studio</span>
-            </div>
-            <span className="text-[10px] sm:text-[11px] text-muted">Criatividade com estrategia.</span>
+            <A1Logo className="h-4 w-auto opacity-40" />
+            <span className="text-[10px] sm:text-[11px] text-muted">Criatividade com estratégia.</span>
           </footer>
         </div>
       </div>
@@ -380,7 +378,7 @@ function HomeView({ data, canManage, setActiveView, setActiveProjectId, setActiv
     <div className="animate-in space-y-6">
       <div>
         <h2 className="font-display text-xl sm:text-2xl font-bold tracking-tight">Bem-vindo de volta</h2>
-        <p className="mt-1 text-sm text-secondary">Acompanhe seus projetos e aprovacoes.</p>
+        <p className="mt-1 text-sm text-secondary">Acompanhe seus projetos e aprovações.</p>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Metric label="Clientes" value={data.clients.length} />
@@ -432,6 +430,32 @@ function ProjectsView(props: {
   const [dragActive, setDragActive] = useState(false);
   const [showProjectList, setShowProjectList] = useState(false);
   const [showFeedPreview, setShowFeedPreview] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [deletingMedia, setDeletingMedia] = useState(false);
+
+  const totalMedia = props.activeProject.posts.reduce((sum, p) => sum + Object.values(p.formats).reduce((s, f) => s + f.media.length, 0), 0);
+
+  async function downloadProject() {
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/download-project?projectId=${props.activeProject.id}`, { credentials: "include" });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${props.activeProject.name}.zip`; a.click();
+      URL.revokeObjectURL(url);
+    } finally { setDownloading(false); }
+  }
+
+  async function deleteAllMedia() {
+    if (!confirm(`Apagar todas as ${totalMedia} mídias de "${props.activeProject.name}"? Isso não pode ser desfeito.`)) return;
+    setDeletingMedia(true);
+    try {
+      await fetch("/api/app", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ action: "deleteProjectMedia", projectId: props.activeProject.id }) });
+      window.location.reload();
+    } finally { setDeletingMedia(false); }
+  }
 
   const grouped = useMemo(() => {
     const map = new Map<string, { client: Client; projects: Project[] }>();
@@ -499,11 +523,13 @@ function ProjectsView(props: {
               <p className="text-[11px] font-semibold uppercase tracking-widest text-muted font-display">{props.activeProject.name}</p>
               <input className="field mt-1 max-w-full sm:max-w-[280px] font-display font-semibold" defaultValue={props.activePost.title} disabled={!props.canManage} key={props.activePost.id} onBlur={(e) => props.savePostTitle(e.target.value)} />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button className="btn btn-outline text-xs" onClick={() => setShowFeedPreview(true)}><Ic d={icons.grid} size={14} /> Ver feed</button>
               {props.canManage && (
                 <>
-                  <button className="btn btn-outline text-xs flex-1 sm:flex-none" disabled={props.postMutation !== null} onClick={props.createPost}><Ic d={icons.plus} size={14} /> <span className="hidden xs:inline">Novo</span> post</button>
+                  <button className="btn btn-outline text-xs" disabled={downloading || totalMedia === 0} onClick={downloadProject}><Ic d={icons.download} size={14} /> {downloading ? "Baixando..." : "Baixar"}</button>
+                  <button className="btn btn-danger text-xs" disabled={deletingMedia || totalMedia === 0} onClick={deleteAllMedia} title="Apagar todas as mídias"><Ic d={icons.trash} size={14} /> Mídias</button>
+                  <button className="btn btn-outline text-xs flex-1 sm:flex-none" disabled={props.postMutation !== null} onClick={props.createPost}><Ic d={icons.plus} size={14} /> Post</button>
                   <button className="btn btn-danger text-xs" disabled={props.postMutation !== null} onClick={props.deletePost}><Ic d={icons.trash} size={14} /></button>
                 </>
               )}
@@ -541,7 +567,7 @@ function ProjectsView(props: {
               onDragEnter={(e) => { e.preventDefault(); setDragActive(true); }} onDragLeave={(e) => { e.preventDefault(); setDragActive(false); }} onDragOver={(e) => e.preventDefault()}
               onDrop={async (e: DragEvent<HTMLLabelElement>) => { e.preventDefault(); setDragActive(false); if (props.canManage && !props.uploadingMedia) await props.uploadFiles(Array.from(e.dataTransfer.files)); }}>
               <span className="text-accent"><Ic d={icons.upload} size={28} /></span>
-              <span className="mt-2 text-sm font-semibold font-display">{props.uploadingMedia ? "Enviando..." : "Arraste midias aqui"}</span>
+              <span className="mt-2 text-sm font-semibold font-display">{props.uploadingMedia ? "Enviando..." : "Arraste mídias aqui"}</span>
               <span className="mt-0.5 text-xs text-muted">{props.uploadingMedia ? "Aguarde." : "ou clique para selecionar"}</span>
               {props.uploadingMedia && <span className="loading-dot mt-3 text-accent" />}
               <input className="sr-only" disabled={props.uploadingMedia} multiple type="file" accept="image/*,video/*" onChange={async (e) => { const input = e.currentTarget; await props.uploadFiles(input.files); input.value = ""; }} />
@@ -553,12 +579,12 @@ function ProjectsView(props: {
             {props.activeItem.media.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-outline p-8 sm:p-12 text-center">
                 <span className="text-muted"><Ic d={icons.image} size={36} /></span>
-                <p className="mt-2 text-sm text-muted">Nenhuma midia</p>
+                <p className="mt-2 text-sm text-muted">Nenhuma mídia</p>
               </div>
             ) : props.activeItem.media.map((m) => (
               <article key={m.id} className="card-flush relative group">
                 {props.canManage && (
-                  <button className="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition hover:bg-red-600" onClick={() => props.deleteMedia(m.id)} title="Remover midia">
+                  <button className="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition hover:bg-red-600" onClick={() => props.deleteMedia(m.id)} title="Remover mídia">
                     <Ic d={icons.x} size={14} />
                   </button>
                 )}
@@ -568,7 +594,7 @@ function ProjectsView(props: {
                 <div className="p-3">
                   <p className="truncate text-xs font-semibold">{m.name}</p>
                   {props.canManage && (
-                    <textarea className="field mt-2 min-h-14 text-xs" defaultValue={m.imageNotes} placeholder="Obs. da midia (gestor)" key={`notes-${m.id}`} onBlur={(e) => props.saveMediaNotes(m.id, e.target.value)} />
+                    <textarea className="field mt-2 min-h-14 text-xs" defaultValue={m.imageNotes} placeholder="Obs. da mídia (gestor)" key={`notes-${m.id}`} onBlur={(e) => props.saveMediaNotes(m.id, e.target.value)} />
                   )}
                   {!props.canManage && m.imageNotes && (
                     <p className="mt-2 text-xs text-secondary bg-sunken rounded-lg p-2">{m.imageNotes}</p>
@@ -586,7 +612,7 @@ function ProjectsView(props: {
             <h3 className="font-display text-sm font-semibold">Copy</h3>
           </div>
           <textarea className="field min-h-28" defaultValue={props.activeItem.copy} disabled={!props.canManage} key={`${props.activeItem.id}-c`} onBlur={(e) => props.saveFormat({ copy: e.target.value })} placeholder={props.canManage ? "Escreva o texto do post" : "Nenhuma copy ainda"} />
-          {props.canManage && <button className="btn btn-outline w-full text-sm mt-3" onClick={() => props.setStatus("em_revisao")}>Enviar para revisao</button>}
+          {props.canManage && <button className="btn btn-outline w-full text-sm mt-3" onClick={() => props.setStatus("em_revisao")}>Enviar para revisão</button>}
         </div>
 
         {/* Observacoes - client and gestor can both edit */}
@@ -613,16 +639,17 @@ function ProjectsView(props: {
           <div className="card">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-accent"><Ic d={icons.check} size={16} /></span>
-              <h3 className="font-display text-sm font-semibold">Aprovacao</h3>
+              <h3 className="font-display text-sm font-semibold">Aprovação</h3>
             </div>
             <div className="space-y-3">
               <div className="flex items-center gap-3 p-3 rounded-xl bg-sunken">
                 <span className="text-[11px] font-semibold uppercase tracking-widest text-muted font-display">Status atual:</span>
                 <StatusBadge status={props.activeItem.status} />
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className={`grid gap-2 ${props.canManage ? "grid-cols-3" : "grid-cols-2"}`}>
                 <button className="btn btn-success text-sm py-3" onClick={() => props.setStatus("aprovado")}><Ic d={icons.check} size={15} /> Aprovar</button>
-                <button className="btn btn-destructive text-sm py-3" onClick={() => props.setStatus("alteracao")}><Ic d={icons.x} size={15} /> Pedir alteracao</button>
+                <button className="btn btn-destructive text-sm py-3" onClick={() => props.setStatus("alteracao")}><Ic d={icons.x} size={15} /> Pedir alteração</button>
+                {props.canManage && <button className="btn btn-outline text-sm py-3" onClick={() => props.setStatus("em_revisao")}><Ic d={icons.edit} size={15} /> Em revisão</button>}
               </div>
             </div>
           </div>
@@ -631,16 +658,19 @@ function ProjectsView(props: {
           <div className="card">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-accent"><Ic d={icons.msg} size={16} /></span>
-              <h3 className="font-display text-sm font-semibold">Comunicacao</h3>
+              <h3 className="font-display text-sm font-semibold">Comunicação</h3>
             </div>
             <div className="max-h-[280px] space-y-2 overflow-auto pr-1 mb-3">
               {props.activeItem.comments.length === 0 ? (
-                <p className="rounded-xl bg-sunken p-4 text-center text-xs text-muted">Nenhuma mensagem.</p>
+                <p className="rounded-xl bg-sunken p-4 text-center text-xs text-muted">Nenhuma mensagem ainda.</p>
               ) : props.activeItem.comments.map((c) => (
                 <div key={c.id} className="rounded-xl bg-sunken p-3">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold text-accent">{c.author}</p>
-                    <span className="text-[10px] text-muted capitalize">{c.role}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted capitalize">{c.role}</span>
+                      {c.createdAt && <span className="text-[10px] text-muted">{formatDateTime(c.createdAt)}</span>}
+                    </div>
                   </div>
                   <p className="mt-1 text-sm leading-5">{c.text}</p>
                 </div>
@@ -703,9 +733,16 @@ function FeedCarouselCell({ media }: { media: MediaAsset[] }) {
   );
 }
 
+const aspectRatios = [
+  { label: "4:5", value: "4/5", desc: "1080×1350" },
+  { label: "1:1", value: "1/1", desc: "1080×1080" },
+  { label: "3:4", value: "3/4", desc: "1080×1440" },
+];
+
 function FeedPreview({ posts, projectName, onClose }: { posts: Post[]; projectName: string; onClose: () => void }) {
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [carouselIdx, setCarouselIdx] = useState(0);
+  const [aspectIdx, setAspectIdx] = useState(0);
   const touchStart = useRef(0);
 
   const feedPosts = posts.map((p) => ({ post: p, media: p.formats.feed.media }));
@@ -739,7 +776,13 @@ function FeedPreview({ posts, projectName, onClose }: { posts: Post[]; projectNa
           <button className="btn btn-ghost p-2" onClick={onClose}><Ic d={icons.close} size={18} /></button>
         </div>
 
-        <div className="feed-grid">
+        <div className="flex items-center justify-center gap-1 py-2 border-b border-[var(--outline)]">
+          {aspectRatios.map((ar, i) => (
+            <button key={ar.label} className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold transition ${aspectIdx === i ? "bg-[#1A1A1A] text-white" : "text-muted hover:text-on-surface hover:bg-sunken"}`} onClick={() => setAspectIdx(i)} title={ar.desc}>{ar.label}</button>
+          ))}
+        </div>
+
+        <div className="feed-grid" style={{ "--feed-aspect": aspectRatios[aspectIdx].value } as React.CSSProperties}>
           {feedPosts.map(({ post, media }) => (
             <button key={post.id} className="feed-cell-btn" onClick={() => openPost(post)}>
               <FeedCarouselCell media={media} />
@@ -862,7 +905,7 @@ function UsersView({ clients, users, newUser, setNewUser, createUser, deleteUser
             <input className="field" placeholder="Senha" type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
             <select className="field" value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value as Role })}><option value="cliente">Cliente</option><option value="gestor">Gestor</option><option value="admin">Admin</option></select>
             {newUser.role === "cliente" && <select className="field" value={newUser.clientId} onChange={(e) => setNewUser({ ...newUser, clientId: e.target.value })}>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}
-            <button className="btn btn-primary w-full" onClick={createUser}>Criar usuario</button>
+            <button className="btn btn-primary w-full" onClick={createUser}>Criar usuário</button>
           </div>
         </div>
       </div>
@@ -928,14 +971,14 @@ function SettingsView({ darkMode, setDarkMode, uploadProfilePhoto, user }: { dar
         </div>
       </div>
       <div className="card">
-        <h3 className="mb-4 font-display font-semibold text-sm">Aparencia</h3>
+        <h3 className="mb-4 font-display font-semibold text-sm">Aparência</h3>
         <p className="text-sm text-secondary leading-6">Alterne entre modo claro e escuro.</p>
         <button className="btn btn-primary mt-4" onClick={() => setDarkMode(!darkMode)}><Ic d={darkMode ? icons.sun : icons.moon} size={16} />{darkMode ? "Modo claro" : "Modo escuro"}</button>
       </div>
       <div className="card sm:col-span-2">
-        <h3 className="mb-4 font-display font-semibold text-sm">Permissoes</h3>
+        <h3 className="mb-4 font-display font-semibold text-sm">Permissões</h3>
         <div className="grid gap-3 sm:grid-cols-3">
-          {[{ t: "Admin", d: "Cria usuarios, projetos e acessa todos os clientes." }, { t: "Gestor", d: "Cria projetos, sobe arquivos e edita copies." }, { t: "Cliente", d: "Ve seus projetos, aprova ou pede alteracao." }].map((p) => (
+          {[{ t: "Admin", d: "Cria usuários, projetos e acessa todos os clientes." }, { t: "Gestor", d: "Cria projetos, sobe arquivos e edita copies." }, { t: "Cliente", d: "Vê seus projetos, aprova ou pede alteração." }].map((p) => (
             <div key={p.t} className="rounded-xl bg-sunken p-4"><p className="font-display text-sm font-semibold">{p.t}</p><p className="mt-1 text-xs text-secondary leading-5">{p.d}</p></div>
           ))}
         </div>
@@ -974,12 +1017,12 @@ function NotificationPanel({ notifications, onClose, onNavigate }: { notificatio
   return (
     <div ref={panelRef} className="notif-panel">
       <div className="notif-header">
-        <h3 className="font-display text-sm font-semibold">Notificacoes</h3>
+        <h3 className="font-display text-sm font-semibold">Notificações</h3>
         <span className="text-[11px] text-muted">{notifications.filter((n) => !n.isRead).length} novas</span>
       </div>
       <div className="notif-list">
         {notifications.length === 0 ? (
-          <div className="p-6 text-center text-sm text-muted">Nenhuma notificacao.</div>
+          <div className="p-6 text-center text-sm text-muted">Nenhuma notificação.</div>
         ) : notifications.map((n) => (
           <button key={n.id} className={`notif-item ${!n.isRead ? "notif-unread" : ""}`} onClick={() => n.projectId && n.postId ? onNavigate(n.projectId, n.postId) : undefined}>
             <span className={`notif-icon ${typeColor[n.type] || "text-muted"}`}>
@@ -999,6 +1042,13 @@ function NotificationPanel({ notifications, onClose, onNavigate }: { notificatio
 
 /* ──────────────────── HELPERS ──────────────────── */
 
+function formatDateTime(dateStr: string) {
+  try {
+    const d = new Date(dateStr + (dateStr.includes("Z") ? "" : "Z"));
+    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  } catch { return ""; }
+}
+
 function StatusBadge({ status }: { status: ApprovalStatus }) {
   return <span className={`status-${status} rounded-full px-3 py-1 text-xs font-semibold`}>{statusLabels[status]}</span>;
 }
@@ -1006,7 +1056,7 @@ function StatusBadge({ status }: { status: ApprovalStatus }) {
 function viewTitle(view: View) {
   if (view === "projetos") return "Projetos";
   if (view === "novoProjeto") return "Novo projeto";
-  if (view === "usuarios") return "Usuarios e acessos";
-  if (view === "configuracoes") return "Configuracoes";
+  if (view === "usuarios") return "Usuários e acessos";
+  if (view === "configuracoes") return "Configurações";
   return "Home";
 }
