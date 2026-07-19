@@ -85,6 +85,7 @@ async function ensureDb() {
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
+      plain_password TEXT NOT NULL DEFAULT '',
       role TEXT NOT NULL,
       client_id TEXT,
       avatar_url TEXT,
@@ -148,6 +149,14 @@ async function ensureDb() {
     );
   `);
 
+  try {
+    await db.execute("ALTER TABLE users ADD COLUMN plain_password TEXT NOT NULL DEFAULT ''");
+    await db.execute({ sql: "UPDATE users SET plain_password = 'admin123' WHERE id = 'u-admin'" });
+    await db.execute({ sql: "UPDATE users SET plain_password = 'gestor123' WHERE id = 'u-gestor'" });
+    await db.execute({ sql: "UPDATE users SET plain_password = 'cliente123' WHERE id = 'u-cliente-01'" });
+    await db.execute({ sql: "UPDATE users SET plain_password = 'cliente123' WHERE id = 'u-cliente-02'" });
+  } catch {}
+
   const count = await db.execute("SELECT COUNT(*) as count FROM users");
   if (Number(count.rows[0].count) > 0) return;
 
@@ -157,10 +166,10 @@ async function ensureDb() {
   const batch: InStatement[] = [
     { sql: "INSERT INTO clients (id, name, tag) VALUES (?, ?, ?)", args: [client1, "Cliente 01", "fast-acai"] },
     { sql: "INSERT INTO clients (id, name, tag) VALUES (?, ?, ?)", args: [client2, "Cliente 02", "studio-nova"] },
-    { sql: "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)", args: ["u-admin", "Administrador", "admin@painel.com", hashPassword("admin123"), "admin", null] },
-    { sql: "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)", args: ["u-gestor", "Gestor Social", "gestor@painel.com", hashPassword("gestor123"), "gestor", null] },
-    { sql: "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)", args: ["u-cliente-01", "Cliente 01", "cliente01@painel.com", hashPassword("cliente123"), "cliente", client1] },
-    { sql: "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)", args: ["u-cliente-02", "Cliente 02", "cliente02@painel.com", hashPassword("cliente123"), "cliente", client2] },
+    { sql: "INSERT INTO users (id, name, email, password_hash, plain_password, role, client_id) VALUES (?, ?, ?, ?, ?, ?, ?)", args: ["u-admin", "Administrador", "admin@painel.com", hashPassword("admin123"), "admin123", "admin", null] },
+    { sql: "INSERT INTO users (id, name, email, password_hash, plain_password, role, client_id) VALUES (?, ?, ?, ?, ?, ?, ?)", args: ["u-gestor", "Gestor Social", "gestor@painel.com", hashPassword("gestor123"), "gestor123", "gestor", null] },
+    { sql: "INSERT INTO users (id, name, email, password_hash, plain_password, role, client_id) VALUES (?, ?, ?, ?, ?, ?, ?)", args: ["u-cliente-01", "Cliente 01", "cliente01@painel.com", hashPassword("cliente123"), "cliente123", "cliente", client1] },
+    { sql: "INSERT INTO users (id, name, email, password_hash, plain_password, role, client_id) VALUES (?, ?, ?, ?, ?, ?, ?)", args: ["u-cliente-02", "Cliente 02", "cliente02@painel.com", hashPassword("cliente123"), "cliente123", "cliente", client2] },
   ];
   await db.batch(batch, "write");
 
@@ -226,7 +235,7 @@ async function loadAppData(user: PublicUser | null) {
 
   let users: unknown[] = [];
   if (canManage(user)) {
-    const usersResult = await db.execute("SELECT id, name, email, password, role, client_id as clientId, avatar_url as avatarUrl FROM users ORDER BY created_at DESC");
+    const usersResult = await db.execute("SELECT id, name, email, plain_password as password, role, client_id as clientId, avatar_url as avatarUrl FROM users ORDER BY created_at DESC");
     users = usersResult.rows;
   }
 
@@ -371,7 +380,7 @@ export async function POST(request: Request) {
       if (!name || !email || !password || !["admin", "gestor", "cliente"].includes(role)) {
         return json({ error: "Preencha nome, email, senha e cargo." }, { status: 400 });
       }
-      await db.execute({ sql: "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)", args: [genId("user"), name, email, hashPassword(password), role, clientId] });
+      await db.execute({ sql: "INSERT INTO users (id, name, email, password_hash, plain_password, role, client_id) VALUES (?, ?, ?, ?, ?, ?, ?)", args: [genId("user"), name, email, hashPassword(password), password, role, clientId] });
       return json(await loadAppData(user));
     }
 
@@ -386,7 +395,7 @@ export async function POST(request: Request) {
         return json({ error: "Preencha nome, email e cargo." }, { status: 400 });
       const password = String(payload.password ?? "").trim();
       if (password) {
-        await db.execute({ sql: "UPDATE users SET name = ?, email = ?, password_hash = ?, role = ?, client_id = ? WHERE id = ?", args: [name, email, hashPassword(password), role, clientId, userId] });
+        await db.execute({ sql: "UPDATE users SET name = ?, email = ?, password_hash = ?, plain_password = ?, role = ?, client_id = ? WHERE id = ?", args: [name, email, hashPassword(password), password, role, clientId, userId] });
       } else {
         await db.execute({ sql: "UPDATE users SET name = ?, email = ?, role = ?, client_id = ? WHERE id = ?", args: [name, email, role, clientId, userId] });
       }
