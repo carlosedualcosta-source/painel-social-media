@@ -214,11 +214,11 @@ export default function Home() {
           <A1Logo className="h-10 w-auto self-start" white />
           <div className="max-w-md">
             <h1 className="font-display text-[2.75rem] font-bold leading-[1.1] tracking-tight">
-              Gerencie posts.<br />
-              <span className="text-[#FF6A13]">Aprove rapido.</span>
+              Seus posts.<br />
+              <span className="text-[#FF6A13]">Sob controle.</span>
             </h1>
             <p className="mt-5 text-[15px] leading-7 text-[#888]">
-              Feed, Story e Video/Reels organizados por projeto. Seu cliente aprova com um clique.
+              Acompanhe, aprove ou solicite alteracoes nos seus posts de Feed, Story e Video/Reels.
             </p>
           </div>
           <p className="text-xs text-[#555] font-display tracking-wider uppercase">Criatividade com estrategia.</p>
@@ -228,7 +228,7 @@ export default function Home() {
           <form className="w-full max-w-sm animate-in" onSubmit={(e) => { e.preventDefault(); login(); }}>
             <div className="mb-8 lg:hidden flex flex-col items-center gap-3">
               <A1Logo className="h-9 w-auto" />
-              <p className="text-sm text-secondary text-center">Gerencie posts. Aprove rapido.</p>
+              <p className="text-sm text-secondary text-center">Seus posts. Sob controle.</p>
             </div>
             <h2 className="font-display text-2xl font-bold tracking-tight">Entrar</h2>
             <p className="mt-1.5 text-sm text-secondary">Acesse o painel do seu projeto.</p>
