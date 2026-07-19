@@ -99,6 +99,18 @@ export async function POST(request: Request) {
       return Response.json({ error: "Nenhuma midia valida foi encontrada. Use imagem ou video." }, { status: 400 });
     }
 
+    const ctx = (await db.execute({ sql: "SELECT posts.title, posts.id as post_id, projects.name as project_name, projects.id as project_id, projects.client_id FROM post_formats JOIN posts ON posts.id = post_formats.post_id JOIN projects ON projects.id = posts.project_id WHERE post_formats.id = ?", args: [formatId] })).rows[0];
+    if (ctx) {
+      const clientUsers = (await db.execute({ sql: "SELECT id FROM users WHERE client_id = ?", args: [ctx.client_id] })).rows.map((r) => r.id as string);
+      if (clientUsers.length > 0) {
+        const notifStmts = clientUsers.map((uid) => ({
+          sql: "INSERT INTO notifications (id, user_id, type, title, body, link_project_id, link_post_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          args: [`notif_${crypto.randomUUID().replaceAll("-", "")}`, uid, "upload", "Novas midias enviadas", `${created.length} arquivo(s) adicionado(s) em "${ctx.title}" (${ctx.project_name}).`, ctx.project_id, ctx.post_id],
+        }));
+        await db.batch(notifStmts, "write");
+      }
+    }
+
     return Response.json({ ok: true, created });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro inesperado.";

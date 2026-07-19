@@ -14,9 +14,10 @@ type Comment = { id: string; author: string; role: Role; text: string; createdAt
 type FormatItem = { id: string; status: ApprovalStatus; copy: string; copyNotes: string; teamNotes: string; media: MediaAsset[]; comments: Comment[] };
 type Post = { id: string; number: number; title: string; formats: Record<FormatKey, FormatItem> };
 type Project = { id: string; clientId: string; name: string; period: string; postCount: number; posts: Post[] };
-type AppData = { user: User | null; users: User[]; clients: Client[]; projects: Project[] };
+type Notification = { id: string; type: string; title: string; body: string; projectId: string | null; postId: string | null; isRead: boolean; createdAt: string };
+type AppData = { user: User | null; users: User[]; clients: Client[]; projects: Project[]; notifications: Notification[] };
 
-const emptyData: AppData = { user: null, users: [], clients: [], projects: [] };
+const emptyData: AppData = { user: null, users: [], clients: [], projects: [], notifications: [] };
 const formatLabels: Record<FormatKey, string> = { feed: "Feed", story: "Story", video: "Video/Reels" };
 const statusLabels: Record<ApprovalStatus, string> = { rascunho: "Rascunho", em_revisao: "Em revisao", alteracao: "Alteracao", aprovado: "Aprovado" };
 
@@ -67,6 +68,7 @@ const icons = {
   chevronLeft: "M15 18l-6-6 6-6",
   chevronRight: "M9 18l6-6-6-6",
   layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
+  bell: "M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0",
 };
 
 const navItems: Array<{ id: View; label: string; icon: string; managerOnly?: boolean }> = [
@@ -99,6 +101,7 @@ export default function Home() {
   const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "cliente" as Role, clientId: "" });
   const [newClientName, setNewClientName] = useState("");
   const [newClientTag, setNewClientTag] = useState("");
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const canManage = data.user?.role === "admin" || data.user?.role === "gestor";
   const activeProject = data.projects.find((p) => p.id === activeProjectId) ?? data.projects[0];
@@ -310,6 +313,15 @@ export default function Home() {
               <h1 className="font-display text-base font-bold sm:text-lg">{viewTitle(activeView)}</h1>
             </div>
             <div className="flex items-center gap-1">
+              <div className="relative">
+                <button className="btn btn-ghost text-xs p-2 relative" onClick={() => { setShowNotifications((v) => !v); if (!showNotifications) action("markNotificationsRead"); }}>
+                  <Ic d={icons.bell} size={16} />
+                  {data.notifications.filter((n) => !n.isRead).length > 0 && (
+                    <span className="absolute top-1 right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#ef4444] px-1 text-[10px] font-bold text-white leading-none">{data.notifications.filter((n) => !n.isRead).length}</span>
+                  )}
+                </button>
+                {showNotifications && <NotificationPanel notifications={data.notifications} onClose={() => setShowNotifications(false)} onNavigate={(projectId, postId) => { setActiveProjectId(projectId); setActivePostId(postId); navigate("projetos"); setShowNotifications(false); }} />}
+              </div>
               <button className="btn btn-ghost text-xs p-2" onClick={() => setDarkMode((v) => !v)}>
                 <Ic d={darkMode ? icons.sun : icons.moon} size={16} />
               </button>
@@ -927,6 +939,59 @@ function SettingsView({ darkMode, setDarkMode, uploadProfilePhoto, user }: { dar
             <div key={p.t} className="rounded-xl bg-sunken p-4"><p className="font-display text-sm font-semibold">{p.t}</p><p className="mt-1 text-xs text-secondary leading-5">{p.d}</p></div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────── NOTIFICATIONS ──────────────────── */
+
+function NotificationPanel({ notifications, onClose, onNavigate }: { notifications: Notification[]; onClose: () => void; onNavigate: (projectId: string, postId: string) => void }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [onClose]);
+
+  const typeIcon: Record<string, string> = { status: icons.check, comment: icons.msg, upload: icons.upload, post: icons.plus };
+  const typeColor: Record<string, string> = { status: "text-[var(--success)]", comment: "text-accent", upload: "text-[var(--info)]", post: "text-[var(--warning)]" };
+
+  function timeAgo(dateStr: string) {
+    const diff = Date.now() - new Date(dateStr + "Z").getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "agora";
+    if (mins < 60) return `${mins}min`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d`;
+  }
+
+  return (
+    <div ref={panelRef} className="notif-panel">
+      <div className="notif-header">
+        <h3 className="font-display text-sm font-semibold">Notificacoes</h3>
+        <span className="text-[11px] text-muted">{notifications.filter((n) => !n.isRead).length} novas</span>
+      </div>
+      <div className="notif-list">
+        {notifications.length === 0 ? (
+          <div className="p-6 text-center text-sm text-muted">Nenhuma notificacao.</div>
+        ) : notifications.map((n) => (
+          <button key={n.id} className={`notif-item ${!n.isRead ? "notif-unread" : ""}`} onClick={() => n.projectId && n.postId ? onNavigate(n.projectId, n.postId) : undefined}>
+            <span className={`notif-icon ${typeColor[n.type] || "text-muted"}`}>
+              <Ic d={typeIcon[n.type] || icons.bell} size={16} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold truncate">{n.title}</p>
+              {n.body && <p className="text-xs text-secondary mt-0.5 line-clamp-2">{n.body}</p>}
+            </div>
+            <span className="text-[10px] text-muted whitespace-nowrap ml-2">{timeAgo(n.createdAt)}</span>
+          </button>
+        ))}
       </div>
     </div>
   );

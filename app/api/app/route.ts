@@ -135,6 +135,17 @@ async function ensureDb() {
       text TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL DEFAULT '',
+      link_project_id TEXT,
+      link_post_id TEXT,
+      is_read INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   const count = await db.execute("SELECT COUNT(*) as count FROM users");
@@ -204,7 +215,7 @@ async function currentUser(request: Request): Promise<PublicUser | null> {
 }
 
 async function loadAppData(user: PublicUser | null) {
-  if (!user) return { user: null, clients: [], users: [], projects: [] };
+  if (!user) return { user: null, clients: [], users: [], projects: [], notifications: [] };
 
   const db = getDb();
 
@@ -228,10 +239,13 @@ async function loadAppData(user: PublicUser | null) {
   const mediaRows = (await db.execute("SELECT * FROM media ORDER BY created_at")).rows;
   const commentRows = (await db.execute("SELECT comments.*, users.name as author, users.role as role FROM comments JOIN users ON users.id = comments.user_id ORDER BY comments.created_at")).rows;
 
+  const notifications = await loadNotifications(user.id);
+
   return {
     user,
     clients,
     users,
+    notifications,
     projects: projectsResult.rows.map((project) => {
       const projectPosts = postRows.filter((post) => post.project_id === project.id);
       return {
@@ -268,6 +282,37 @@ async function formatClientId(formatId: string): Promise<string | null> {
     args: [formatId],
   });
   return (result.rows[0]?.client_id as string) ?? null;
+}
+
+async function notify(userIds: string[], type: string, title: string, body: string, linkProjectId?: string, linkPostId?: string) {
+  const db = getDb();
+  const stmts: InStatement[] = userIds.map((uid) => ({
+    sql: "INSERT INTO notifications (id, user_id, type, title, body, link_project_id, link_post_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    args: [genId("notif"), uid, type, title, body, linkProjectId ?? null, linkPostId ?? null],
+  }));
+  if (stmts.length > 0) await db.batch(stmts, "write");
+}
+
+async function getUsersForClient(clientId: string): Promise<string[]> {
+  const rows = (await getDb().execute({ sql: "SELECT id FROM users WHERE client_id = ?", args: [clientId] })).rows;
+  return rows.map((r) => r.id as string);
+}
+
+async function getManagerIds(): Promise<string[]> {
+  const rows = (await getDb().execute("SELECT id FROM users WHERE role IN ('admin', 'gestor')")).rows;
+  return rows.map((r) => r.id as string);
+}
+
+async function loadNotifications(userId: string) {
+  const rows = (await getDb().execute({
+    sql: "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
+    args: [userId],
+  })).rows;
+  return rows.map((r) => ({
+    id: r.id, type: r.type, title: r.title, body: r.body,
+    projectId: r.link_project_id, postId: r.link_post_id,
+    isRead: r.is_read === 1, createdAt: r.created_at,
+  }));
 }
 
 function json(data: unknown, init?: ResponseInit) {
@@ -416,20 +461,44 @@ export async function POST(request: Request) {
       return json(await loadAppData(user));
     }
 
+    if (action === "markNotificationsRead") {
+      await db.execute({ sql: "UPDATE notifications SET is_read = 1 WHERE user_id = ?", args: [user.id] });
+      return json(await loadAppData(user));
+    }
+
     if (action === "updateFormat") {
       const formatId = String(payload.formatId ?? "");
       const clientId = await formatClientId(formatId);
       if (!clientId || !canAccessClient(user, clientId)) return json({ error: "Sem permissao." }, { status: 403 });
+
+      const oldFmt = (await db.execute({ sql: "SELECT status FROM post_formats WHERE id = ?", args: [formatId] })).rows[0];
+      const oldStatus = oldFmt?.status as string;
+      const newStatus = String(payload.status ?? oldStatus);
+
       if (canManage(user)) {
         await db.execute({
           sql: "UPDATE post_formats SET copy = ?, copy_notes = ?, team_notes = ?, status = ? WHERE id = ?",
-          args: [String(payload.copy ?? ""), String(payload.copyNotes ?? ""), String(payload.teamNotes ?? ""), String(payload.status ?? "rascunho"), formatId],
+          args: [String(payload.copy ?? ""), String(payload.copyNotes ?? ""), String(payload.teamNotes ?? ""), newStatus, formatId],
         });
       } else {
-        const status = String(payload.status ?? "");
-        if (!["aprovado", "alteracao"].includes(status)) return json({ error: "Clientes so podem aprovar ou pedir alteracao." }, { status: 403 });
-        await db.execute({ sql: "UPDATE post_formats SET status = ? WHERE id = ?", args: [status, formatId] });
+        if (!["aprovado", "alteracao"].includes(newStatus)) return json({ error: "Clientes so podem aprovar ou pedir alteracao." }, { status: 403 });
+        await db.execute({ sql: "UPDATE post_formats SET status = ? WHERE id = ?", args: [newStatus, formatId] });
       }
+
+      if (newStatus !== oldStatus) {
+        const ctx = (await db.execute({ sql: "SELECT posts.title, posts.id as post_id, projects.name as project_name, projects.id as project_id, projects.client_id FROM post_formats JOIN posts ON posts.id = post_formats.post_id JOIN projects ON projects.id = posts.project_id WHERE post_formats.id = ?", args: [formatId] })).rows[0];
+        if (ctx) {
+          const statusLabel = newStatus === "aprovado" ? "aprovado" : newStatus === "alteracao" ? "alteracao solicitada" : newStatus === "em_revisao" ? "enviado para revisao" : newStatus;
+          if (canManage(user)) {
+            const clientUsers = await getUsersForClient(ctx.client_id as string);
+            await notify(clientUsers, "status", `Post ${statusLabel}`, `"${ctx.title}" em ${ctx.project_name} foi ${statusLabel}.`, ctx.project_id as string, ctx.post_id as string);
+          } else {
+            const managers = await getManagerIds();
+            await notify(managers, "status", `Cliente ${newStatus === "aprovado" ? "aprovou" : "pediu alteracao"}`, `${user.name} ${newStatus === "aprovado" ? "aprovou" : "pediu alteracao em"} "${ctx.title}" (${ctx.project_name}).`, ctx.project_id as string, ctx.post_id as string);
+          }
+        }
+      }
+
       return json(await loadAppData(user));
     }
 
@@ -461,6 +530,19 @@ export async function POST(request: Request) {
         { sql: "INSERT INTO comments (id, format_id, user_id, text) VALUES (?, ?, ?, ?)", args: [genId("comment"), formatId, user.id, text] },
         ...(user.role === "cliente" ? [{ sql: "UPDATE post_formats SET status = ? WHERE id = ?", args: ["alteracao", formatId] }] : []),
       ], "write");
+
+      const ctx = (await db.execute({ sql: "SELECT posts.title, posts.id as post_id, projects.name as project_name, projects.id as project_id, projects.client_id FROM post_formats JOIN posts ON posts.id = post_formats.post_id JOIN projects ON projects.id = posts.project_id WHERE post_formats.id = ?", args: [formatId] })).rows[0];
+      if (ctx) {
+        const preview = text.length > 60 ? text.slice(0, 57) + "..." : text;
+        if (canManage(user)) {
+          const clientUsers = await getUsersForClient(ctx.client_id as string);
+          await notify(clientUsers, "comment", "Nova mensagem do gestor", `${user.name}: "${preview}" em ${ctx.title}`, ctx.project_id as string, ctx.post_id as string);
+        } else {
+          const managers = await getManagerIds();
+          await notify(managers, "comment", "Nova mensagem do cliente", `${user.name}: "${preview}" em ${ctx.title}`, ctx.project_id as string, ctx.post_id as string);
+        }
+      }
+
       return json(await loadAppData(user));
     }
 
