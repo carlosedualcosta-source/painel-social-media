@@ -12,46 +12,39 @@ function cookieValue(request: Request, name: string) {
     ?.slice(name.length + 1);
 }
 
-function currentUserId(request: Request): string | null {
+async function currentUserId(request: Request): Promise<string | null> {
   const token = cookieValue(request, sessionCookie);
   if (!token) return null;
-  const row = getDb()
-    .prepare(
-      "SELECT user_id FROM sessions WHERE token = ? AND expires_at > ?"
-    )
-    .get(token, Date.now()) as { user_id: string } | undefined;
-  return row?.user_id ?? null;
+  const result = await getDb().execute({
+    sql: "SELECT user_id FROM sessions WHERE token = ? AND expires_at > ?",
+    args: [token, Date.now()],
+  });
+  return (result.rows[0]?.user_id as string) ?? null;
 }
 
 export async function POST(request: Request) {
   try {
-    const userId = currentUserId(request);
-    if (!userId)
-      return Response.json({ error: "Login necessario." }, { status: 401 });
+    const userId = await currentUserId(request);
+    if (!userId) return Response.json({ error: "Login necessario." }, { status: 401 });
 
     const form = await request.formData();
     const file = form.get("file");
     if (!(file instanceof File) || !file.type.startsWith("image/")) {
-      return Response.json(
-        { error: "Envie uma imagem para o perfil." },
-        { status: 400 }
-      );
+      return Response.json({ error: "Envie uma imagem para o perfil." }, { status: 400 });
     }
 
     const key = `avatars/${userId}/${crypto.randomUUID()}-${file.name}`;
     const buffer = Buffer.from(await file.arrayBuffer());
-    saveFile(key, buffer);
-    getDb()
-      .prepare("UPDATE users SET avatar_key = ? WHERE id = ?")
-      .run(key, userId);
+    const blobUrl = await saveFile(key, buffer);
 
-    return Response.json({
-      ok: true,
-      avatarUrl: `/api/file?key=${encodeURIComponent(key)}`,
+    await getDb().execute({
+      sql: "UPDATE users SET avatar_url = ? WHERE id = ?",
+      args: [blobUrl, userId],
     });
+
+    return Response.json({ ok: true, avatarUrl: blobUrl });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Erro inesperado.";
+    const message = error instanceof Error ? error.message : "Erro inesperado.";
     return Response.json({ error: message }, { status: 500 });
   }
 }

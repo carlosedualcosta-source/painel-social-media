@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { getDb } from "@/lib/db";
+import type { InStatement } from "@libsql/client";
 
 type Role = "admin" | "gestor" | "cliente";
 type FormatKey = "feed" | "story" | "video";
@@ -11,7 +12,7 @@ type UserRow = {
   password_hash: string;
   role: Role;
   client_id: string | null;
-  avatar_key: string | null;
+  avatar_url: string | null;
 };
 
 type PublicUser = {
@@ -43,9 +44,7 @@ function publicUser(user: UserRow): PublicUser {
     email: user.email,
     role: user.role,
     clientId: user.client_id,
-    avatarUrl: user.avatar_key
-      ? `/api/file?key=${encodeURIComponent(user.avatar_key)}`
-      : null,
+    avatarUrl: user.avatar_url ?? null,
   };
 }
 
@@ -71,18 +70,16 @@ function canAccessClient(user: PublicUser, clientId: string) {
   return canManage(user) || user.clientId === clientId;
 }
 
-function ensureDb() {
+async function ensureDb() {
   const db = getDb();
 
-  db.exec(`
+  await db.executeMultiple(`
     CREATE TABLE IF NOT EXISTS clients (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       tag TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  db.exec(`
+    );
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -90,19 +87,15 @@ function ensureDb() {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL,
       client_id TEXT,
-      avatar_key TEXT,
+      avatar_url TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  db.exec(`
+    );
     CREATE TABLE IF NOT EXISTS sessions (
       token TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
       expires_at INTEGER NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  db.exec(`
+    );
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       client_id TEXT NOT NULL,
@@ -110,17 +103,13 @@ function ensureDb() {
       period TEXT NOT NULL,
       post_count INTEGER NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  db.exec(`
+    );
     CREATE TABLE IF NOT EXISTS posts (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
       number INTEGER NOT NULL,
       title TEXT NOT NULL
-    )
-  `);
-  db.exec(`
+    );
     CREATE TABLE IF NOT EXISTS post_formats (
       id TEXT PRIMARY KEY,
       post_id TEXT NOT NULL,
@@ -129,242 +118,156 @@ function ensureDb() {
       copy TEXT NOT NULL DEFAULT '',
       copy_notes TEXT NOT NULL DEFAULT '',
       team_notes TEXT NOT NULL DEFAULT ''
-    )
-  `);
-  db.exec(`
+    );
     CREATE TABLE IF NOT EXISTS media (
       id TEXT PRIMARY KEY,
       format_id TEXT NOT NULL,
       name TEXT NOT NULL,
       type TEXT NOT NULL,
-      r2_key TEXT NOT NULL,
+      url TEXT NOT NULL DEFAULT '',
       image_notes TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  db.exec(`
+    );
     CREATE TABLE IF NOT EXISTS comments (
       id TEXT PRIMARY KEY,
       format_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
       text TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
+    );
   `);
 
-  const count = db.prepare("SELECT COUNT(*) as count FROM users").get() as {
-    count: number;
-  };
-  if (count.count > 0) return;
+  const count = await db.execute("SELECT COUNT(*) as count FROM users");
+  if (Number(count.rows[0].count) > 0) return;
 
   const client1 = "cliente-01";
   const client2 = "cliente-02";
 
-  const seed = db.transaction(() => {
-    db.prepare("INSERT INTO clients (id, name, tag) VALUES (?, ?, ?)").run(
-      client1,
-      "Cliente 01",
-      "fast-acai"
-    );
-    db.prepare("INSERT INTO clients (id, name, tag) VALUES (?, ?, ?)").run(
-      client2,
-      "Cliente 02",
-      "studio-nova"
-    );
-    db.prepare(
-      "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)"
-    ).run("u-admin", "Administrador", "admin@painel.com", hashPassword("admin123"), "admin", null);
-    db.prepare(
-      "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)"
-    ).run("u-gestor", "Gestor Social", "gestor@painel.com", hashPassword("gestor123"), "gestor", null);
-    db.prepare(
-      "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)"
-    ).run("u-cliente-01", "Cliente 01", "cliente01@painel.com", hashPassword("cliente123"), "cliente", client1);
-    db.prepare(
-      "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)"
-    ).run("u-cliente-02", "Cliente 02", "cliente02@painel.com", hashPassword("cliente123"), "cliente", client2);
-  });
-  seed();
+  const batch: InStatement[] = [
+    { sql: "INSERT INTO clients (id, name, tag) VALUES (?, ?, ?)", args: [client1, "Cliente 01", "fast-acai"] },
+    { sql: "INSERT INTO clients (id, name, tag) VALUES (?, ?, ?)", args: [client2, "Cliente 02", "studio-nova"] },
+    { sql: "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)", args: ["u-admin", "Administrador", "admin@painel.com", hashPassword("admin123"), "admin", null] },
+    { sql: "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)", args: ["u-gestor", "Gestor Social", "gestor@painel.com", hashPassword("gestor123"), "gestor", null] },
+    { sql: "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)", args: ["u-cliente-01", "Cliente 01", "cliente01@painel.com", hashPassword("cliente123"), "cliente", client1] },
+    { sql: "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)", args: ["u-cliente-02", "Cliente 02", "cliente02@painel.com", hashPassword("cliente123"), "cliente", client2] },
+  ];
+  await db.batch(batch, "write");
 
-  createProjectRows({ clientId: client1, name: "Rede social Junho", period: "Junho 2026", postCount: 16 });
-  createProjectRows({ clientId: client1, name: "Rede social Julho", period: "Julho 2026", postCount: 12 });
-  createProjectRows({ clientId: client2, name: "Campanha Junho", period: "Junho 2026", postCount: 8 });
+  await createProjectRows({ clientId: client1, name: "Rede social Junho", period: "Junho 2026", postCount: 16 });
+  await createProjectRows({ clientId: client1, name: "Rede social Julho", period: "Julho 2026", postCount: 12 });
+  await createProjectRows({ clientId: client2, name: "Campanha Junho", period: "Junho 2026", postCount: 8 });
 }
 
-function createProjectRows({
-  clientId,
-  name,
-  period,
-  postCount,
-}: {
-  clientId: string;
-  name: string;
-  period: string;
-  postCount: number;
-}) {
+async function createProjectRows({ clientId, name, period, postCount }: { clientId: string; name: string; period: string; postCount: number }) {
   const db = getDb();
   const projectId = genId("project");
 
-  const insertProject = db.transaction(() => {
-    db.prepare(
-      "INSERT INTO projects (id, client_id, name, period, post_count) VALUES (?, ?, ?, ?, ?)"
-    ).run(projectId, clientId, name, period, postCount);
+  const stmts: InStatement[] = [
+    { sql: "INSERT INTO projects (id, client_id, name, period, post_count) VALUES (?, ?, ?, ?, ?)", args: [projectId, clientId, name, period, postCount] },
+  ];
 
-    for (let number = 1; number <= postCount; number += 1) {
-      const postId = genId("post");
-      db.prepare(
-        "INSERT INTO posts (id, project_id, number, title) VALUES (?, ?, ?, ?)"
-      ).run(postId, projectId, number, `Post ${String(number).padStart(2, "0")}`);
-
-      for (const format of formats) {
-        db.prepare(
-          "INSERT INTO post_formats (id, post_id, format, status) VALUES (?, ?, ?, ?)"
-        ).run(genId("format"), postId, format, "rascunho");
-      }
+  for (let number = 1; number <= postCount; number += 1) {
+    const postId = genId("post");
+    stmts.push({ sql: "INSERT INTO posts (id, project_id, number, title) VALUES (?, ?, ?, ?)", args: [postId, projectId, number, `Post ${String(number).padStart(2, "0")}`] });
+    for (const format of formats) {
+      stmts.push({ sql: "INSERT INTO post_formats (id, post_id, format, status) VALUES (?, ?, ?, ?)", args: [genId("format"), postId, format, "rascunho"] });
     }
-  });
-  insertProject();
+  }
 
+  await db.batch(stmts, "write");
   return projectId;
 }
 
-function createPostRows(projectId: string, number: number) {
+async function createPostRows(projectId: string, number: number) {
   const db = getDb();
   const postId = genId("post");
-
-  const insertPost = db.transaction(() => {
-    db.prepare(
-      "INSERT INTO posts (id, project_id, number, title) VALUES (?, ?, ?, ?)"
-    ).run(postId, projectId, number, `Post ${String(number).padStart(2, "0")}`);
-
-    for (const format of formats) {
-      db.prepare(
-        "INSERT INTO post_formats (id, post_id, format, status) VALUES (?, ?, ?, ?)"
-      ).run(genId("format"), postId, format, "rascunho");
-    }
-  });
-  insertPost();
-
+  const stmts: InStatement[] = [
+    { sql: "INSERT INTO posts (id, project_id, number, title) VALUES (?, ?, ?, ?)", args: [postId, projectId, number, `Post ${String(number).padStart(2, "0")}`] },
+  ];
+  for (const format of formats) {
+    stmts.push({ sql: "INSERT INTO post_formats (id, post_id, format, status) VALUES (?, ?, ?, ?)", args: [genId("format"), postId, format, "rascunho"] });
+  }
+  await db.batch(stmts, "write");
   return postId;
 }
 
-function currentUser(request: Request): PublicUser | null {
+async function currentUser(request: Request): Promise<PublicUser | null> {
   const token = cookieValue(request, sessionCookie);
   if (!token) return null;
   const now = Date.now();
-  const row = getDb()
-    .prepare(
-      "SELECT users.* FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.token = ? AND sessions.expires_at > ?"
-    )
-    .get(token, now) as UserRow | undefined;
-  return row ? publicUser(row) : null;
+  const result = await getDb().execute({
+    sql: "SELECT users.* FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.token = ? AND sessions.expires_at > ?",
+    args: [token, now],
+  });
+  if (result.rows.length === 0) return null;
+  return publicUser(result.rows[0] as unknown as UserRow);
 }
 
-function loadAppData(user: PublicUser | null) {
+async function loadAppData(user: PublicUser | null) {
   if (!user) return { user: null, clients: [], users: [], projects: [] };
 
   const db = getDb();
 
-  const clients = canManage(user)
-    ? db.prepare("SELECT * FROM clients ORDER BY name").all()
-    : db.prepare("SELECT * FROM clients WHERE id = ?").all(user.clientId);
+  const clientsResult = canManage(user)
+    ? await db.execute("SELECT * FROM clients ORDER BY name")
+    : await db.execute({ sql: "SELECT * FROM clients WHERE id = ?", args: [user.clientId] });
+  const clients = clientsResult.rows;
 
-  const userRows = canManage(user)
-    ? db
-        .prepare(
-          "SELECT id, name, email, role, client_id as clientId, avatar_key as avatarKey FROM users ORDER BY created_at DESC"
-        )
-        .all()
-    : [];
-  const users = (userRows as Array<Record<string, unknown>>).map((row) => ({
-    ...row,
-    avatarUrl: row.avatarKey
-      ? `/api/file?key=${encodeURIComponent(String(row.avatarKey))}`
-      : null,
-  }));
+  let users: unknown[] = [];
+  if (canManage(user)) {
+    const usersResult = await db.execute("SELECT id, name, email, role, client_id as clientId, avatar_url as avatarUrl FROM users ORDER BY created_at DESC");
+    users = usersResult.rows;
+  }
 
-  const projectRows = canManage(user)
-    ? db.prepare("SELECT * FROM projects ORDER BY created_at DESC").all()
-    : db
-        .prepare(
-          "SELECT * FROM projects WHERE client_id = ? ORDER BY created_at DESC"
-        )
-        .all(user.clientId);
+  const projectsResult = canManage(user)
+    ? await db.execute("SELECT * FROM projects ORDER BY created_at DESC")
+    : await db.execute({ sql: "SELECT * FROM projects WHERE client_id = ? ORDER BY created_at DESC", args: [user.clientId] });
 
-  const postRows = db.prepare("SELECT * FROM posts ORDER BY number").all() as Array<Record<string, unknown>>;
-  const formatRows = db.prepare("SELECT * FROM post_formats").all() as Array<Record<string, unknown>>;
-  const mediaRows = db
-    .prepare("SELECT * FROM media ORDER BY created_at")
-    .all() as Array<Record<string, unknown>>;
-  const commentRows = db
-    .prepare(
-      "SELECT comments.*, users.name as author, users.role as role FROM comments JOIN users ON users.id = comments.user_id ORDER BY comments.created_at"
-    )
-    .all() as Array<Record<string, unknown>>;
+  const postRows = (await db.execute("SELECT * FROM posts ORDER BY number")).rows;
+  const formatRows = (await db.execute("SELECT * FROM post_formats")).rows;
+  const mediaRows = (await db.execute("SELECT * FROM media ORDER BY created_at")).rows;
+  const commentRows = (await db.execute("SELECT comments.*, users.name as author, users.role as role FROM comments JOIN users ON users.id = comments.user_id ORDER BY comments.created_at")).rows;
 
   return {
     user,
     clients,
     users,
-    projects: (projectRows as Array<Record<string, unknown>>).map((project) => ({
-      id: project.id,
-      clientId: project.client_id,
-      name: project.name,
-      period: project.period,
-      postCount: project.post_count,
-      posts: postRows
-        .filter((post) => post.project_id === project.id)
-        .map((post) => ({
-          id: post.id,
-          number: post.number,
-          title: post.title,
-          formats: Object.fromEntries(
-            formats.map((format) => {
-              const item = formatRows.find(
-                (row) => row.post_id === post.id && row.format === format
-              );
-              return [
-                format,
-                {
-                  id: item?.id,
-                  status: item?.status ?? "rascunho",
-                  copy: item?.copy ?? "",
-                  copyNotes: item?.copy_notes ?? "",
-                  teamNotes: item?.team_notes ?? "",
-                  media: mediaRows
-                    .filter((media) => media.format_id === item?.id)
-                    .map((media) => ({
-                      id: media.id,
-                      name: media.name,
-                      type: media.type,
-                      url: `/api/file?key=${encodeURIComponent(String(media.r2_key))}`,
-                      imageNotes: media.image_notes,
-                    })),
-                  comments: commentRows
-                    .filter((comment) => comment.format_id === item?.id)
-                    .map((comment) => ({
-                      id: comment.id,
-                      author: comment.author,
-                      role: comment.role,
-                      text: comment.text,
-                      createdAt: comment.created_at,
-                    })),
-                },
-              ];
-            })
-          ),
-        })),
-    })),
+    projects: projectsResult.rows.map((project) => {
+      const projectPosts = postRows.filter((post) => post.project_id === project.id);
+      return {
+        id: project.id,
+        clientId: project.client_id,
+        name: project.name,
+        period: project.period,
+        postCount: project.post_count,
+        posts: projectPosts.map((post) => {
+          const fmtEntries = formats.map((format) => {
+            const item = formatRows.find((row) => row.post_id === post.id && row.format === format);
+            const fmtMedia = mediaRows.filter((m) => m.format_id === item?.id).map((m) => ({
+              id: m.id, name: m.name, type: m.type, url: m.url, imageNotes: m.image_notes,
+            }));
+            const fmtComments = commentRows.filter((c) => c.format_id === item?.id).map((c) => ({
+              id: c.id, author: c.author, role: c.role, text: c.text, createdAt: c.created_at,
+            }));
+            return [format, {
+              id: item?.id, status: item?.status ?? "rascunho",
+              copy: item?.copy ?? "", copyNotes: item?.copy_notes ?? "", teamNotes: item?.team_notes ?? "",
+              media: fmtMedia, comments: fmtComments,
+            }];
+          });
+          return { id: post.id, number: post.number, title: post.title, formats: Object.fromEntries(fmtEntries) };
+        }),
+      };
+    }),
   };
 }
 
-function formatClientId(formatId: string): string | null {
-  const row = getDb()
-    .prepare(
-      "SELECT projects.client_id as client_id FROM post_formats JOIN posts ON posts.id = post_formats.post_id JOIN projects ON projects.id = posts.project_id WHERE post_formats.id = ?"
-    )
-    .get(formatId) as { client_id: string } | undefined;
-  return row?.client_id ?? null;
+async function formatClientId(formatId: string): Promise<string | null> {
+  const result = await getDb().execute({
+    sql: "SELECT projects.client_id as client_id FROM post_formats JOIN posts ON posts.id = post_formats.post_id JOIN projects ON projects.id = posts.project_id WHERE post_formats.id = ?",
+    args: [formatId],
+  });
+  return (result.rows[0]?.client_id as string) ?? null;
 }
 
 function json(data: unknown, init?: ResponseInit) {
@@ -373,9 +276,9 @@ function json(data: unknown, init?: ResponseInit) {
 
 export async function GET(request: Request) {
   try {
-    ensureDb();
-    const user = currentUser(request);
-    return json(loadAppData(user));
+    await ensureDb();
+    const user = await currentUser(request);
+    return json(await loadAppData(user));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro inesperado.";
     return json({ error: message }, { status: 500 });
@@ -384,7 +287,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    ensureDb();
+    await ensureDb();
     const payload = (await request.json()) as Record<string, unknown>;
     const action = payload.action;
     const db = getDb();
@@ -392,64 +295,43 @@ export async function POST(request: Request) {
     if (action === "login") {
       const email = String(payload.email ?? "").trim().toLowerCase();
       const password = String(payload.password ?? "");
-      const row = db
-        .prepare("SELECT * FROM users WHERE lower(email) = ?")
-        .get(email) as UserRow | undefined;
+      const result = await db.execute({ sql: "SELECT * FROM users WHERE lower(email) = ?", args: [email] });
+      const row = result.rows[0] as unknown as UserRow | undefined;
       if (!row || row.password_hash !== hashPassword(password)) {
         return json({ error: "Email ou senha invalidos." }, { status: 401 });
       }
       const token = `${crypto.randomUUID()}-${crypto.randomUUID()}`;
-      db.prepare(
-        "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)"
-      ).run(token, row.id, Date.now() + 1000 * 60 * 60 * 24 * 30);
-      return json(loadAppData(publicUser(row)), {
-        headers: {
-          "Set-Cookie": cookieHeader(request, token, 60 * 60 * 24 * 30),
-        },
+      await db.execute({ sql: "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)", args: [token, row.id, Date.now() + 1000 * 60 * 60 * 24 * 30] });
+      return json(await loadAppData(publicUser(row)), {
+        headers: { "Set-Cookie": cookieHeader(request, token, 60 * 60 * 24 * 30) },
       });
     }
 
     if (action === "logout") {
       const token = cookieValue(request, sessionCookie);
-      if (token)
-        db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
-      return json(
-        { ok: true },
-        { headers: { "Set-Cookie": cookieHeader(request, "", 0) } }
-      );
+      if (token) await db.execute({ sql: "DELETE FROM sessions WHERE token = ?", args: [token] });
+      return json({ ok: true }, { headers: { "Set-Cookie": cookieHeader(request, "", 0) } });
     }
 
-    const user = currentUser(request);
+    const user = await currentUser(request);
     if (!user) return json({ error: "Login necessario." }, { status: 401 });
 
     if (action === "createUser") {
-      if (!canManage(user))
-        return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
       const name = String(payload.name ?? "").trim();
       const email = String(payload.email ?? "").trim().toLowerCase();
       const password = String(payload.password ?? "");
       const role = String(payload.role ?? "cliente") as Role;
       const clientId = role === "cliente" ? String(payload.clientId ?? "") : null;
-      if (
-        !name ||
-        !email ||
-        !password ||
-        !["admin", "gestor", "cliente"].includes(role)
-      ) {
-        return json(
-          { error: "Preencha nome, email, senha e cargo." },
-          { status: 400 }
-        );
+      if (!name || !email || !password || !["admin", "gestor", "cliente"].includes(role)) {
+        return json({ error: "Preencha nome, email, senha e cargo." }, { status: 400 });
       }
-      db.prepare(
-        "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)"
-      ).run(genId("user"), name, email, hashPassword(password), role, clientId);
-      return json(loadAppData(user));
+      await db.execute({ sql: "INSERT INTO users (id, name, email, password_hash, role, client_id) VALUES (?, ?, ?, ?, ?, ?)", args: [genId("user"), name, email, hashPassword(password), role, clientId] });
+      return json(await loadAppData(user));
     }
 
     if (action === "updateUser") {
-      if (!canManage(user))
-        return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
       const userId = String(payload.userId ?? "");
       const name = String(payload.name ?? "").trim();
       const email = String(payload.email ?? "").trim().toLowerCase();
@@ -459,203 +341,127 @@ export async function POST(request: Request) {
         return json({ error: "Preencha nome, email e cargo." }, { status: 400 });
       const password = String(payload.password ?? "").trim();
       if (password) {
-        db.prepare(
-          "UPDATE users SET name = ?, email = ?, password_hash = ?, role = ?, client_id = ? WHERE id = ?"
-        ).run(name, email, hashPassword(password), role, clientId, userId);
+        await db.execute({ sql: "UPDATE users SET name = ?, email = ?, password_hash = ?, role = ?, client_id = ? WHERE id = ?", args: [name, email, hashPassword(password), role, clientId, userId] });
       } else {
-        db.prepare(
-          "UPDATE users SET name = ?, email = ?, role = ?, client_id = ? WHERE id = ?"
-        ).run(name, email, role, clientId, userId);
+        await db.execute({ sql: "UPDATE users SET name = ?, email = ?, role = ?, client_id = ? WHERE id = ?", args: [name, email, role, clientId, userId] });
       }
-      return json(loadAppData(user));
+      return json(await loadAppData(user));
     }
 
     if (action === "deleteUser") {
-      if (!canManage(user))
-        return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
       const userId = String(payload.userId ?? "");
-      if (userId === user.id)
-        return json(
-          { error: "Voce nao pode apagar seu proprio usuario." },
-          { status: 400 }
-        );
-      db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
-      db.prepare("DELETE FROM users WHERE id = ?").run(userId);
-      return json(loadAppData(user));
+      if (userId === user.id) return json({ error: "Voce nao pode apagar seu proprio usuario." }, { status: 400 });
+      await db.batch([
+        { sql: "DELETE FROM sessions WHERE user_id = ?", args: [userId] },
+        { sql: "DELETE FROM users WHERE id = ?", args: [userId] },
+      ], "write");
+      return json(await loadAppData(user));
     }
 
     if (action === "createClient") {
-      if (!canManage(user))
-        return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
       const name = String(payload.name ?? "").trim();
-      const tag = String(payload.tag ?? "")
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-      if (!name)
-        return json(
-          { error: "Informe o nome do cliente." },
-          { status: 400 }
-        );
-      db.prepare(
-        "INSERT INTO clients (id, name, tag) VALUES (?, ?, ?)"
-      ).run(
-        genId("client"),
-        name,
-        tag || name.toLowerCase().replace(/[^a-z0-9]+/g, "-")
-      );
-      return json(loadAppData(user));
+      const tag = String(payload.tag ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      if (!name) return json({ error: "Informe o nome do cliente." }, { status: 400 });
+      await db.execute({ sql: "INSERT INTO clients (id, name, tag) VALUES (?, ?, ?)", args: [genId("client"), name, tag || name.toLowerCase().replace(/[^a-z0-9]+/g, "-")] });
+      return json(await loadAppData(user));
     }
 
     if (action === "createProject") {
-      if (!canManage(user))
-        return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
       const name = String(payload.name ?? "").trim();
       const period = String(payload.period ?? name).trim();
       const clientId = String(payload.clientId ?? "");
-      const postCount = Math.max(
-        1,
-        Math.min(120, Number(payload.postCount ?? 1))
-      );
-      if (!name || !clientId)
-        return json(
-          { error: "Informe nome e cliente." },
-          { status: 400 }
-        );
-      createProjectRows({ clientId, name, period, postCount });
-      return json(loadAppData(user));
+      const postCount = Math.max(1, Math.min(120, Number(payload.postCount ?? 1)));
+      if (!name || !clientId) return json({ error: "Informe nome e cliente." }, { status: 400 });
+      await createProjectRows({ clientId, name, period, postCount });
+      return json(await loadAppData(user));
     }
 
     if (action === "createPost") {
-      if (!canManage(user))
-        return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
       const projectId = String(payload.projectId ?? "");
-      const project = db
-        .prepare("SELECT * FROM projects WHERE id = ?")
-        .get(projectId) as { id: string; post_count: number } | undefined;
-      if (!project)
-        return json(
-          { error: "Projeto nao encontrado." },
-          { status: 404 }
-        );
-      const maxRow = db
-        .prepare(
-          "SELECT MAX(number) as max_number FROM posts WHERE project_id = ?"
-        )
-        .get(projectId) as { max_number: number | null } | undefined;
-      const nextNumber = (maxRow?.max_number ?? 0) + 1;
-      const postId = createPostRows(projectId, nextNumber);
-      db.prepare(
-        "UPDATE projects SET post_count = post_count + 1 WHERE id = ?"
-      ).run(projectId);
-      return json({ ...loadAppData(user), createdPostId: postId });
+      const projectResult = await db.execute({ sql: "SELECT * FROM projects WHERE id = ?", args: [projectId] });
+      if (projectResult.rows.length === 0) return json({ error: "Projeto nao encontrado." }, { status: 404 });
+      const maxResult = await db.execute({ sql: "SELECT MAX(number) as max_number FROM posts WHERE project_id = ?", args: [projectId] });
+      const nextNumber = (Number(maxResult.rows[0]?.max_number) || 0) + 1;
+      const postId = await createPostRows(projectId, nextNumber);
+      await db.execute({ sql: "UPDATE projects SET post_count = post_count + 1 WHERE id = ?", args: [projectId] });
+      return json({ ...(await loadAppData(user)), createdPostId: postId });
     }
 
     if (action === "deletePost") {
-      if (!canManage(user))
-        return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
       const postId = String(payload.postId ?? "");
-      const post = db
-        .prepare("SELECT project_id FROM posts WHERE id = ?")
-        .get(postId) as { project_id: string } | undefined;
-      if (!post)
-        return json({ error: "Post nao encontrado." }, { status: 404 });
-
-      const deleteAll = db.transaction(() => {
-        const fmtRows = db
-          .prepare("SELECT id FROM post_formats WHERE post_id = ?")
-          .all(postId) as Array<{ id: string }>;
-        for (const fmt of fmtRows) {
-          db.prepare("DELETE FROM comments WHERE format_id = ?").run(fmt.id);
-          db.prepare("DELETE FROM media WHERE format_id = ?").run(fmt.id);
-        }
-        db.prepare("DELETE FROM post_formats WHERE post_id = ?").run(postId);
-        db.prepare("DELETE FROM posts WHERE id = ?").run(postId);
-        db.prepare(
-          "UPDATE projects SET post_count = CASE WHEN post_count > 0 THEN post_count - 1 ELSE 0 END WHERE id = ?"
-        ).run(post.project_id);
-      });
-      deleteAll();
-
-      return json(loadAppData(user));
+      const postResult = await db.execute({ sql: "SELECT project_id FROM posts WHERE id = ?", args: [postId] });
+      if (postResult.rows.length === 0) return json({ error: "Post nao encontrado." }, { status: 404 });
+      const projectId = postResult.rows[0].project_id as string;
+      const fmtResult = await db.execute({ sql: "SELECT id FROM post_formats WHERE post_id = ?", args: [postId] });
+      const stmts: InStatement[] = [];
+      for (const fmt of fmtResult.rows) {
+        stmts.push({ sql: "DELETE FROM comments WHERE format_id = ?", args: [fmt.id] });
+        stmts.push({ sql: "DELETE FROM media WHERE format_id = ?", args: [fmt.id] });
+      }
+      stmts.push({ sql: "DELETE FROM post_formats WHERE post_id = ?", args: [postId] });
+      stmts.push({ sql: "DELETE FROM posts WHERE id = ?", args: [postId] });
+      stmts.push({ sql: "UPDATE projects SET post_count = CASE WHEN post_count > 0 THEN post_count - 1 ELSE 0 END WHERE id = ?", args: [projectId] });
+      await db.batch(stmts, "write");
+      return json(await loadAppData(user));
     }
 
     if (action === "updatePost") {
-      if (!canManage(user))
-        return json({ error: "Sem permissao." }, { status: 403 });
-      db.prepare("UPDATE posts SET title = ? WHERE id = ?").run(
-        String(payload.title ?? ""),
-        String(payload.postId ?? "")
-      );
-      return json(loadAppData(user));
+      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
+      await db.execute({ sql: "UPDATE posts SET title = ? WHERE id = ?", args: [String(payload.title ?? ""), String(payload.postId ?? "")] });
+      return json(await loadAppData(user));
     }
 
     if (action === "updateFormat") {
       const formatId = String(payload.formatId ?? "");
-      const clientId = formatClientId(formatId);
-      if (!clientId || !canAccessClient(user, clientId))
-        return json({ error: "Sem permissao." }, { status: 403 });
+      const clientId = await formatClientId(formatId);
+      if (!clientId || !canAccessClient(user, clientId)) return json({ error: "Sem permissao." }, { status: 403 });
       if (canManage(user)) {
-        db.prepare(
-          "UPDATE post_formats SET copy = ?, copy_notes = ?, team_notes = ?, status = ? WHERE id = ?"
-        ).run(
-          String(payload.copy ?? ""),
-          String(payload.copyNotes ?? ""),
-          String(payload.teamNotes ?? ""),
-          String(payload.status ?? "rascunho"),
-          formatId
-        );
+        await db.execute({
+          sql: "UPDATE post_formats SET copy = ?, copy_notes = ?, team_notes = ?, status = ? WHERE id = ?",
+          args: [String(payload.copy ?? ""), String(payload.copyNotes ?? ""), String(payload.teamNotes ?? ""), String(payload.status ?? "rascunho"), formatId],
+        });
       } else {
         const status = String(payload.status ?? "");
-        if (!["aprovado", "alteracao"].includes(status))
-          return json(
-            { error: "Clientes so podem aprovar ou pedir alteracao." },
-            { status: 403 }
-          );
-        db.prepare("UPDATE post_formats SET status = ? WHERE id = ?").run(
-          status,
-          formatId
-        );
+        if (!["aprovado", "alteracao"].includes(status)) return json({ error: "Clientes so podem aprovar ou pedir alteracao." }, { status: 403 });
+        await db.execute({ sql: "UPDATE post_formats SET status = ? WHERE id = ?", args: [status, formatId] });
       }
-      return json(loadAppData(user));
+      return json(await loadAppData(user));
     }
 
     if (action === "updateMediaNotes") {
-      if (!canManage(user))
-        return json({ error: "Sem permissao." }, { status: 403 });
-      db.prepare("UPDATE media SET image_notes = ? WHERE id = ?").run(
-        String(payload.imageNotes ?? ""),
-        String(payload.mediaId ?? "")
-      );
-      return json(loadAppData(user));
+      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
+      await db.execute({ sql: "UPDATE media SET image_notes = ? WHERE id = ?", args: [String(payload.imageNotes ?? ""), String(payload.mediaId ?? "")] });
+      return json(await loadAppData(user));
     }
 
     if (action === "deleteMedia") {
-      if (!canManage(user))
-        return json({ error: "Sem permissao." }, { status: 403 });
+      if (!canManage(user)) return json({ error: "Sem permissao." }, { status: 403 });
       const mediaId = String(payload.mediaId ?? "");
-      db.prepare("DELETE FROM media WHERE id = ?").run(mediaId);
-      return json(loadAppData(user));
+      const mediaResult = await db.execute({ sql: "SELECT url FROM media WHERE id = ?", args: [mediaId] });
+      if (mediaResult.rows[0]?.url) {
+        const { deleteFile } = await import("@/lib/storage");
+        await deleteFile(String(mediaResult.rows[0].url));
+      }
+      await db.execute({ sql: "DELETE FROM media WHERE id = ?", args: [mediaId] });
+      return json(await loadAppData(user));
     }
 
     if (action === "addComment") {
       const formatId = String(payload.formatId ?? "");
-      const clientId = formatClientId(formatId);
+      const clientId = await formatClientId(formatId);
       const text = String(payload.text ?? "").trim();
-      if (!clientId || !canAccessClient(user, clientId))
-        return json({ error: "Sem permissao." }, { status: 403 });
-      if (!text)
-        return json({ error: "Escreva uma mensagem." }, { status: 400 });
-      db.prepare(
-        "INSERT INTO comments (id, format_id, user_id, text) VALUES (?, ?, ?, ?)"
-      ).run(genId("comment"), formatId, user.id, text);
-      if (user.role === "cliente") {
-        db.prepare(
-          "UPDATE post_formats SET status = ? WHERE id = ?"
-        ).run("alteracao", formatId);
-      }
-      return json(loadAppData(user));
+      if (!clientId || !canAccessClient(user, clientId)) return json({ error: "Sem permissao." }, { status: 403 });
+      if (!text) return json({ error: "Escreva uma mensagem." }, { status: 400 });
+      await db.batch([
+        { sql: "INSERT INTO comments (id, format_id, user_id, text) VALUES (?, ?, ?, ?)", args: [genId("comment"), formatId, user.id, text] },
+        ...(user.role === "cliente" ? [{ sql: "UPDATE post_formats SET status = ? WHERE id = ?", args: ["alteracao", formatId] }] : []),
+      ], "write");
+      return json(await loadAppData(user));
     }
 
     return json({ error: "Acao desconhecida." }, { status: 400 });
