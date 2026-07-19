@@ -562,31 +562,33 @@ function ProjectsView(props: {
           </div>
         </div>
 
-        {/* Copy & Obs - GESTOR ONLY */}
-        {props.canManage && (
+        {/* Copy - gestor edits, client reads */}
+        <div className="card">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-accent"><Ic d={icons.edit} size={16} /></span>
+            <h3 className="font-display text-sm font-semibold">Copy</h3>
+          </div>
+          <textarea className="field min-h-28" defaultValue={props.activeItem.copy} disabled={!props.canManage} key={`${props.activeItem.id}-c`} onBlur={(e) => props.saveFormat({ copy: e.target.value })} placeholder={props.canManage ? "Escreva o texto do post" : "Nenhuma copy ainda"} />
+          {props.canManage && <button className="btn btn-outline w-full text-sm mt-3" onClick={() => props.setStatus("em_revisao")}>Enviar para revisao</button>}
+        </div>
+
+        {/* Observacoes - client and gestor can both edit */}
+        <div className="grid gap-4 md:grid-cols-2">
           <div className="card">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-accent"><Ic d={icons.edit} size={16} /></span>
-              <h3 className="font-display text-sm font-semibold">Copy & Observacoes</h3>
-              <span className="text-[10px] text-muted bg-sunken rounded-full px-2 py-0.5">Gestor</span>
+              <h3 className="font-display text-sm font-semibold">Obs. do texto</h3>
             </div>
-            <div className="space-y-3">
-              <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-widest text-muted font-display">Copy do post</span>
-                <textarea className="field mt-1.5 min-h-28" defaultValue={props.activeItem.copy} key={`${props.activeItem.id}-c`} onBlur={(e) => props.saveFormat({ copy: e.target.value })} placeholder="Texto do post" />
-              </label>
-              <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-widest text-muted font-display">Obs. do texto</span>
-                <textarea className="field mt-1.5 min-h-16 text-sm" defaultValue={props.activeItem.copyNotes} key={`${props.activeItem.id}-cn`} onBlur={(e) => props.saveFormat({ copyNotes: e.target.value })} placeholder="Observacoes sobre a copy" />
-              </label>
-              <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-widest text-muted font-display">Obs. interna (equipe)</span>
-                <textarea className="field mt-1.5 min-h-16 text-sm" defaultValue={props.activeItem.teamNotes} key={`${props.activeItem.id}-tn`} onBlur={(e) => props.saveFormat({ teamNotes: e.target.value })} placeholder="Notas internas da equipe" />
-              </label>
-              <button className="btn btn-outline w-full text-sm" onClick={() => props.setStatus("em_revisao")}>Enviar para revisao</button>
-            </div>
+            <textarea className="field min-h-20 text-sm" defaultValue={props.activeItem.copyNotes} key={`${props.activeItem.id}-cn`} onBlur={(e) => props.saveFormat({ copyNotes: e.target.value })} placeholder="O que precisa mudar no texto?" />
           </div>
-        )}
+          <div className="card">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-accent"><Ic d={icons.image} size={16} /></span>
+              <h3 className="font-display text-sm font-semibold">Obs. da imagem</h3>
+            </div>
+            <textarea className="field min-h-20 text-sm" defaultValue={props.activeItem.teamNotes} key={`${props.activeItem.id}-tn`} onBlur={(e) => props.saveFormat({ teamNotes: e.target.value })} placeholder="O que precisa mudar nas imagens?" />
+          </div>
+        </div>
 
         {/* Approval + Communication - visible to ALL (especially clients) */}
         <div className="grid gap-4 md:grid-cols-2">
