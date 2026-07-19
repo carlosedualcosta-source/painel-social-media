@@ -13,7 +13,7 @@ type MediaAsset = { id: string; name: string; type: "image" | "video"; url: stri
 type Comment = { id: string; author: string; role: Role; text: string; createdAt?: string };
 type FormatItem = { id: string; status: ApprovalStatus; copy: string; copyNotes: string; teamNotes: string; media: MediaAsset[]; comments: Comment[] };
 type Post = { id: string; number: number; title: string; formats: Record<FormatKey, FormatItem> };
-type Project = { id: string; clientId: string; name: string; period: string; postCount: number; posts: Post[] };
+type Project = { id: string; clientId: string; name: string; period: string; postCount: number; archived?: boolean; posts: Post[] };
 type Notification = { id: string; type: string; title: string; body: string; projectId: string | null; postId: string | null; isRead: boolean; createdAt: string };
 type AppData = { user: User | null; users: User[]; clients: Client[]; projects: Project[]; notifications: Notification[] };
 
@@ -70,6 +70,8 @@ const icons = {
   layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
   bell: "M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0",
   download: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3",
+  archive: "M21 8v13H3V8M1 3h22v5H1zM10 12h4",
+  restore: "M3 2v6h6M3.51 15a9 9 0 1014.85-3.36L3.51 2",
 };
 
 const navItems: Array<{ id: View; label: string; icon: string; managerOnly?: boolean }> = [
@@ -193,6 +195,16 @@ export default function Home() {
     setConfirmModal({ title: "Apagar usuário", msg: `Tem certeza que deseja apagar "${u?.name ?? "este usuário"}"? Isso não pode ser desfeito.`, onConfirm: async () => { setConfirmModal(null); await action("deleteUser", { userId }); showToast("Usuário apagado.", "info"); } });
   }
   async function createClient() { const d = await action("createClient", { name: newClientName, tag: newClientTag }); if (d) { setNewClientName(""); setNewClientTag(""); showToast("Cliente criado com sucesso!"); } }
+
+  function archiveProject(projectId: string) {
+    const p = data.projects.find((x) => x.id === projectId);
+    setConfirmModal({ title: "Arquivar projeto", msg: `Arquivar "${p?.name}"? O projeto ficará oculto para os clientes mas pode ser restaurado depois.`, onConfirm: async () => { setConfirmModal(null); await action("archiveProject", { projectId }); showToast("Projeto arquivado.", "info"); } });
+  }
+  async function unarchiveProject(projectId: string) { await action("unarchiveProject", { projectId }); showToast("Projeto restaurado!"); }
+  function deleteProjectPermanently(projectId: string) {
+    const p = data.projects.find((x) => x.id === projectId);
+    setConfirmModal({ title: "Apagar projeto permanentemente", msg: `Tem certeza que deseja apagar "${p?.name}" e TODOS os seus posts, mídias e comentários? Essa ação não pode ser desfeita.`, onConfirm: async () => { setConfirmModal(null); await action("deleteProject", { projectId }); setActiveProjectId(""); showToast("Projeto apagado permanentemente.", "info"); } });
+  }
 
   async function uploadFiles(files: FileList | File[] | null) {
     if (!files || !activeItem || uploadingMedia) return;
@@ -360,7 +372,7 @@ export default function Home() {
             {error && <div className="mb-4 rounded-xl bg-[var(--danger-bg)] px-4 py-3 text-sm font-medium text-[var(--danger-text)]">{error}</div>}
             {activeView === "home" && <HomeView data={data} canManage={canManage} setActiveView={navigate} setActiveProjectId={setActiveProjectId} setActivePostId={setActivePostId} />}
             {activeView === "projetos" && activeProject && activePost && activeItem && (
-              <ProjectsView activeClient={activeClient} activeFormat={activeFormat} activeItem={activeItem} activePost={activePost} activeProject={activeProject} canManage={canManage} createPost={createPost} deletePost={deletePost} postMutation={postMutation} projects={data.projects} clients={data.clients} uploadingMedia={uploadingMedia} setActiveFormat={setActiveFormat} setActivePostId={setActivePostId} setActiveProjectId={setActiveProjectId} uploadFiles={uploadFiles} saveFormat={saveFormat} savePostTitle={(title) => action("updatePost", { postId: activePost.id, title })} saveMediaNotes={(mediaId, imageNotes) => action("updateMediaNotes", { mediaId, imageNotes })} deleteMedia={(mediaId) => action("deleteMedia", { mediaId })} setStatus={(status) => saveFormat({ status })} commentDraft={commentDraft} setCommentDraft={setCommentDraft} addComment={addComment} userRole={data.user.role} />
+              <ProjectsView activeClient={activeClient} activeFormat={activeFormat} activeItem={activeItem} activePost={activePost} activeProject={activeProject} canManage={canManage} createPost={createPost} deletePost={deletePost} postMutation={postMutation} projects={data.projects} clients={data.clients} uploadingMedia={uploadingMedia} setActiveFormat={setActiveFormat} setActivePostId={setActivePostId} setActiveProjectId={setActiveProjectId} uploadFiles={uploadFiles} saveFormat={saveFormat} savePostTitle={(title) => action("updatePost", { postId: activePost.id, title })} saveMediaNotes={(mediaId, imageNotes) => action("updateMediaNotes", { mediaId, imageNotes })} deleteMedia={(mediaId) => action("deleteMedia", { mediaId })} setStatus={(status) => saveFormat({ status })} commentDraft={commentDraft} setCommentDraft={setCommentDraft} addComment={addComment} userRole={data.user.role} archiveProject={archiveProject} unarchiveProject={unarchiveProject} deleteProject={deleteProjectPermanently} />
             )}
             {activeView === "novoProjeto" && canManage && (
               <NewProjectView clients={data.clients} createProject={createProject} newProjectClientId={newProjectClientId} newProjectCount={newProjectCount} newProjectName={newProjectName} newProjectPeriod={newProjectPeriod} setNewProjectClientId={setNewProjectClientId} setNewProjectCount={setNewProjectCount} setNewProjectName={setNewProjectName} setNewProjectPeriod={setNewProjectPeriod} />
@@ -489,6 +501,7 @@ function ProjectsView(props: {
   saveFormat: (fields: Partial<FormatItem>) => void; savePostTitle: (title: string) => void; saveMediaNotes: (mediaId: string, imageNotes: string) => void; deleteMedia: (mediaId: string) => void;
   setActiveFormat: (f: FormatKey) => void; setActivePostId: (id: string) => void; setActiveProjectId: (id: string) => void; setStatus: (s: ApprovalStatus) => void;
   setCommentDraft: (v: string) => void; uploadFiles: (files: FileList | File[] | null) => Promise<void>; userRole: Role;
+  archiveProject: (projectId: string) => void; unarchiveProject: (projectId: string) => void; deleteProject: (projectId: string) => void;
 }) {
   const [dragActive, setDragActive] = useState(false);
   const [showProjectList, setShowProjectList] = useState(false);
@@ -562,19 +575,46 @@ function ProjectsView(props: {
 
       {/* Project list - desktop sidebar */}
       <aside className="hidden lg:block space-y-4 max-h-[calc(100vh-140px)] overflow-auto pr-1">
-        {grouped.map((g) => (
+        {grouped.map((g) => {
+          const active = g.projects.filter((p) => !p.archived);
+          const archived = g.projects.filter((p) => p.archived);
+          return (
           <div key={g.client.id}>
             <h3 className="px-1 mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted font-display">{g.client.name}</h3>
             <div className="space-y-1">
-              {g.projects.map((p) => (
-                <button key={p.id} className={`w-full rounded-xl p-3 text-left transition ${p.id === props.activeProject.id ? "bg-accent-subtle border border-accent/30" : "hover:bg-sunken border border-transparent"}`} onClick={() => { props.setActiveProjectId(p.id); props.setActivePostId(p.posts[0]?.id ?? ""); }}>
+              {active.map((p) => (
+                <div key={p.id} className={`group relative rounded-xl p-3 text-left transition cursor-pointer ${p.id === props.activeProject.id ? "bg-accent-subtle border border-accent/30" : "hover:bg-sunken border border-transparent"}`} onClick={() => { props.setActiveProjectId(p.id); props.setActivePostId(p.posts[0]?.id ?? ""); }}>
                   <span className={`block text-sm font-semibold ${p.id === props.activeProject.id ? "text-accent" : ""}`}>{p.name}</span>
                   <span className="mt-0.5 block text-[11px] text-muted">{p.period} &middot; {p.posts.length} posts</span>
-                </button>
+                  {props.canManage && (
+                    <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
+                      <button className="p-1 rounded-lg hover:bg-surface text-muted hover:text-on-surface transition" title="Arquivar" onClick={(e) => { e.stopPropagation(); props.archiveProject(p.id); }}><Ic d={icons.archive} size={13} /></button>
+                      <button className="p-1 rounded-lg hover:bg-surface text-muted hover:text-[var(--danger-text)] transition" title="Apagar" onClick={(e) => { e.stopPropagation(); props.deleteProject(p.id); }}><Ic d={icons.trash} size={13} /></button>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
+            {props.canManage && archived.length > 0 && (
+              <details className="mt-2">
+                <summary className="px-1 cursor-pointer text-[10px] font-semibold uppercase tracking-widest text-muted hover:text-secondary transition">Arquivados ({archived.length})</summary>
+                <div className="mt-1 space-y-1 opacity-60">
+                  {archived.map((p) => (
+                    <div key={p.id} className="group relative rounded-xl p-2.5 text-left border border-transparent hover:bg-sunken transition cursor-pointer" onClick={() => { props.setActiveProjectId(p.id); props.setActivePostId(p.posts[0]?.id ?? ""); }}>
+                      <span className="block text-xs font-semibold">{p.name}</span>
+                      <span className="mt-0.5 block text-[10px] text-muted">{p.period}</span>
+                      <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
+                        <button className="p-1 rounded-lg hover:bg-surface text-muted hover:text-accent transition" title="Restaurar" onClick={(e) => { e.stopPropagation(); props.unarchiveProject(p.id); }}><Ic d={icons.restore} size={13} /></button>
+                        <button className="p-1 rounded-lg hover:bg-surface text-muted hover:text-[var(--danger-text)] transition" title="Apagar" onClick={(e) => { e.stopPropagation(); props.deleteProject(p.id); }}><Ic d={icons.trash} size={13} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
-        ))}
+          );
+        })}
       </aside>
 
       {/* Main content area */}

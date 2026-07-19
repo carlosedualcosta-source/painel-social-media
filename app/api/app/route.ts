@@ -103,6 +103,7 @@ async function ensureDb() {
       name TEXT NOT NULL,
       period TEXT NOT NULL,
       post_count INTEGER NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS posts (
@@ -148,6 +149,8 @@ async function ensureDb() {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  try { await db.execute("ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"); } catch {}
 
   try {
     await db.execute("ALTER TABLE users ADD COLUMN plain_password TEXT NOT NULL DEFAULT ''");
@@ -240,8 +243,8 @@ async function loadAppData(user: PublicUser | null) {
   }
 
   const projectsResult = canManage(user)
-    ? await db.execute("SELECT * FROM projects ORDER BY created_at DESC")
-    : await db.execute({ sql: "SELECT * FROM projects WHERE client_id = ? ORDER BY created_at DESC", args: [user.clientId] });
+    ? await db.execute("SELECT * FROM projects ORDER BY archived, created_at DESC")
+    : await db.execute({ sql: "SELECT * FROM projects WHERE client_id = ? AND archived = 0 ORDER BY created_at DESC", args: [user.clientId] });
 
   const postRows = (await db.execute("SELECT * FROM posts ORDER BY number")).rows;
   const formatRows = (await db.execute("SELECT * FROM post_formats")).rows;
@@ -593,6 +596,40 @@ export async function POST(request: Request) {
         if (row.url) await deleteFile(String(row.url)).catch(() => {});
       }
       await db.execute({ sql: `DELETE FROM media WHERE format_id IN (${fmtIds.map(() => "?").join(",")})`, args: fmtIds });
+      return json(await loadAppData(user));
+    }
+
+    if (action === "archiveProject") {
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
+      await db.execute({ sql: "UPDATE projects SET archived = 1 WHERE id = ?", args: [String(payload.projectId ?? "")] });
+      return json(await loadAppData(user));
+    }
+
+    if (action === "unarchiveProject") {
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
+      await db.execute({ sql: "UPDATE projects SET archived = 0 WHERE id = ?", args: [String(payload.projectId ?? "")] });
+      return json(await loadAppData(user));
+    }
+
+    if (action === "deleteProject") {
+      if (!canManage(user)) return json({ error: "Sem permissão." }, { status: 403 });
+      const projectId = String(payload.projectId ?? "");
+      const postRows = (await db.execute({ sql: "SELECT id FROM posts WHERE project_id = ?", args: [projectId] })).rows;
+      const postIds = postRows.map((p) => p.id as string);
+      if (postIds.length > 0) {
+        const fmtRows = (await db.execute({ sql: `SELECT id FROM post_formats WHERE post_id IN (${postIds.map(() => "?").join(",")})`, args: postIds })).rows;
+        const fmtIds = fmtRows.map((f) => f.id as string);
+        if (fmtIds.length > 0) {
+          const mediaResult = await db.execute({ sql: `SELECT url FROM media WHERE format_id IN (${fmtIds.map(() => "?").join(",")})`, args: fmtIds });
+          const { deleteFile } = await import("@/lib/storage");
+          for (const row of mediaResult.rows) { if (row.url) await deleteFile(String(row.url)).catch(() => {}); }
+          await db.execute({ sql: `DELETE FROM comments WHERE format_id IN (${fmtIds.map(() => "?").join(",")})`, args: fmtIds });
+          await db.execute({ sql: `DELETE FROM media WHERE format_id IN (${fmtIds.map(() => "?").join(",")})`, args: fmtIds });
+          await db.execute({ sql: `DELETE FROM post_formats WHERE post_id IN (${postIds.map(() => "?").join(",")})`, args: postIds });
+        }
+        await db.execute({ sql: `DELETE FROM posts WHERE project_id = ?`, args: [projectId] });
+      }
+      await db.execute({ sql: "DELETE FROM projects WHERE id = ?", args: [projectId] });
       return json(await loadAppData(user));
     }
 
