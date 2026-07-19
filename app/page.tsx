@@ -210,25 +210,22 @@ export default function Home() {
   if (!data.user) {
     return (
       <main className="flex min-h-screen min-h-dvh flex-col lg:flex-row">
-        <div className="hidden flex-1 flex-col justify-between bg-[#1A1A1A] p-8 text-white lg:flex lg:p-12">
-          <A1Logo className="h-10 w-auto self-start" white />
-          <div className="max-w-md">
-            <h1 className="font-display text-[2.75rem] font-bold leading-[1.1] tracking-tight">
-              Seus posts.<br />
-              <span className="text-[#FF6A13]">Sob controle.</span>
+        <div className="hidden flex-1 flex-col justify-between bg-[#1A1A1A] p-8 text-white lg:flex lg:p-16 overflow-hidden relative">
+          <div className="login-bg-glow" />
+          <A1Logo className="h-10 w-auto self-start login-fade-in" white />
+          <div className="max-w-lg">
+            <h1 className="font-display text-[3.5rem] font-bold leading-[1.05] tracking-tight login-slide-up">
+              Gerencie posts.<br />
+              <span className="text-[#FF6A13] login-slide-up-delay">Aprove rapido.</span>
             </h1>
-            <p className="mt-5 text-[15px] leading-7 text-[#888]">
-              Acompanhe, aprove ou solicite alteracoes nos seus posts de Feed, Story e Video/Reels.
-            </p>
           </div>
-          <p className="text-xs text-[#555] font-display tracking-wider uppercase">Criatividade com estrategia.</p>
+          <div />
         </div>
 
         <div className="flex flex-1 items-center justify-center bg-surface p-6 sm:p-8">
           <form className="w-full max-w-sm animate-in" onSubmit={(e) => { e.preventDefault(); login(); }}>
             <div className="mb-8 lg:hidden flex flex-col items-center gap-3">
               <A1Logo className="h-9 w-auto" />
-              <p className="text-sm text-secondary text-center">Seus posts. Sob controle.</p>
             </div>
             <h2 className="font-display text-2xl font-bold tracking-tight">Entrar</h2>
             <p className="mt-1.5 text-sm text-secondary">Acesse o painel do seu projeto.</p>
