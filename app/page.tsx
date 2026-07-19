@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type TouchEvent as ReactTouchEvent } from "react";
 
 type Role = "admin" | "gestor" | "cliente";
-type View = "home" | "projetos" | "novoProjeto" | "usuarios" | "configuracoes";
+type View = "home" | "projetos" | "novoProjeto" | "usuarios" | "configuracoes" | "sobre";
 type FormatKey = "feed" | "story" | "video";
 type ApprovalStatus = "rascunho" | "em_revisao" | "alteracao" | "aprovado";
 
@@ -72,6 +72,7 @@ const icons = {
   download: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3",
   archive: "M21 8v13H3V8M1 3h22v5H1zM10 12h4",
   restore: "M3 2v6h6M3.51 15a9 9 0 1014.85-3.36L3.51 2",
+  help: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01",
 };
 
 const navItems: Array<{ id: View; label: string; icon: string; managerOnly?: boolean }> = [
@@ -79,6 +80,7 @@ const navItems: Array<{ id: View; label: string; icon: string; managerOnly?: boo
   { id: "projetos", label: "Projetos", icon: "folder" },
   { id: "usuarios", label: "Usuários", icon: "users", managerOnly: true },
   { id: "configuracoes", label: "Config.", icon: "settings" },
+  { id: "sobre", label: "Sobre", icon: "help" },
 ];
 
 export default function Home() {
@@ -381,6 +383,7 @@ export default function Home() {
               <UsersView clients={data.clients} createUser={createUser} createClient={createClient} deleteUser={deleteUser} updateUser={(payload) => action("updateUser", payload)} newClientName={newClientName} newClientTag={newClientTag} newUser={newUser} setNewClientName={setNewClientName} setNewClientTag={setNewClientTag} setNewUser={setNewUser} users={data.users} />
             )}
             {activeView === "configuracoes" && <SettingsView darkMode={darkMode} setDarkMode={setDarkMode} uploadProfilePhoto={uploadProfilePhoto} user={data.user} />}
+            {activeView === "sobre" && <SobreView role={data.user.role} />}
           </section>
 
           {/* Footer */}
@@ -1064,6 +1067,149 @@ function UsersView({ clients, users, newUser, setNewUser, createUser, deleteUser
 }
 
 /* ──────────────────── SETTINGS ──────────────────── */
+
+/* ──────────────────── SOBRE ──────────────────── */
+
+function SobreSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card">
+      <button className="w-full flex items-center justify-between text-left" onClick={() => setOpen(!open)}>
+        <h3 className="font-display font-semibold text-sm">{title}</h3>
+        <span className={`inline-block transition-transform ${open ? "rotate-90" : ""}`}><Ic d={open ? icons.chevronLeft : icons.chevronRight} size={16} /></span>
+      </button>
+      {open && <div className="mt-3 text-sm text-secondary space-y-2 leading-relaxed">{children}</div>}
+    </div>
+  );
+}
+
+function SobreView({ role }: { role: Role }) {
+  const isManager = role === "admin" || role === "gestor";
+
+  return (
+    <div className="animate-in space-y-4 max-w-3xl">
+      <div>
+        <h2 className="font-display text-xl sm:text-2xl font-bold tracking-tight">Sobre o Painel</h2>
+        <p className="mt-1 text-sm text-secondary">Manual de uso e tutoriais para aproveitar ao máximo a plataforma.</p>
+      </div>
+
+      <div className="card bg-accent-subtle border-accent/20">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 text-accent"><Ic d={icons.help} size={20} /></div>
+          <div>
+            <h3 className="font-display font-semibold text-sm">O que é o Painel Social Media?</h3>
+            <p className="mt-1 text-sm text-secondary">O Painel Social Media da A1 Studio é uma plataforma de gestão de conteúdo para redes sociais. Aqui, gestores e clientes trabalham juntos para criar, revisar e aprovar posts de forma organizada e eficiente.</p>
+          </div>
+        </div>
+      </div>
+
+      {isManager ? (
+        <>
+          <SobreSection title="Como criar um projeto">
+            <p>Clique em <strong>"+ Novo projeto"</strong> na barra lateral. Preencha o nome do projeto (ex.: "Rede social Julho"), o período, selecione o cliente e a quantidade de posts.</p>
+            <p>O projeto será criado com todos os posts numerados automaticamente, cada um com três formatos: Feed, Story e Vídeo/Reels.</p>
+          </SobreSection>
+
+          <SobreSection title="Como enviar mídias">
+            <p>Na aba <strong>Projetos</strong>, selecione o projeto e o post desejado. Escolha o formato (Feed, Story ou Vídeo/Reels).</p>
+            <p>Arraste as imagens ou vídeos para a área de upload, ou clique para selecionar os arquivos. Formatos aceitos: PNG, JPG, WEBP, GIF, MP4, MOV e outros.</p>
+            <p>Para carrosséis, envie várias imagens de uma vez — elas serão organizadas como slides.</p>
+          </SobreSection>
+
+          <SobreSection title="Como gerenciar aprovações">
+            <p>Cada formato de post tem um status: <strong>Rascunho</strong>, <strong>Em revisão</strong>, <strong>Alteração</strong> ou <strong>Aprovado</strong>.</p>
+            <p>Após enviar mídias e escrever o copy, clique em <strong>"Enviar para revisão"</strong>. O cliente receberá uma notificação e poderá aprovar ou pedir alteração.</p>
+            <p>Use o botão <strong>"Em revisão"</strong> para resetar o status quando fizer ajustes após uma solicitação de alteração.</p>
+          </SobreSection>
+
+          <SobreSection title="Obs. do texto e Obs. da imagem">
+            <p>São campos para o cliente deixar observações específicas sobre o que precisa mudar no copy (texto) ou nas imagens.</p>
+            <p>Você receberá uma notificação quando o cliente editar esses campos.</p>
+          </SobreSection>
+
+          <SobreSection title="Comunicação">
+            <p>Cada formato de post tem um chat próprio. Use para conversar diretamente com o cliente sobre aquele post específico.</p>
+            <p>Todas as mensagens ficam registradas com data e horário para referência futura.</p>
+          </SobreSection>
+
+          <SobreSection title="Feed Preview">
+            <p>Clique em <strong>"Ver feed"</strong> para visualizar como os posts ficarão no feed do Instagram. Você pode alternar entre os formatos 4:5, 1:1 e 3:4.</p>
+            <p>Posts com múltiplas imagens aparecem como carrosséis que podem ser arrastados.</p>
+          </SobreSection>
+
+          <SobreSection title="Baixar e gerenciar mídias">
+            <p><strong>Baixar:</strong> Clique em "Baixar" para baixar todas as mídias do projeto em um arquivo ZIP organizado por posts.</p>
+            <p><strong>Apagar mídias:</strong> Use o botão "Mídias" (vermelho) para apagar todas as mídias de um projeto e liberar espaço no armazenamento.</p>
+            <p><strong>Dica:</strong> Baixe o ZIP e suba para o Google Drive antes de apagar, assim mantém o backup.</p>
+          </SobreSection>
+
+          <SobreSection title="Arquivar e apagar projetos">
+            <p><strong>Arquivar:</strong> Passe o mouse sobre um projeto na barra lateral e clique no ícone de caixa. O projeto fica oculto para os clientes mas pode ser restaurado.</p>
+            <p><strong>Apagar:</strong> Remove o projeto permanentemente, incluindo todos os posts, mídias e comentários. Essa ação não pode ser desfeita.</p>
+          </SobreSection>
+
+          <SobreSection title="Gerenciar usuários">
+            <p>Na aba <strong>Usuários</strong>, você pode criar clientes, criar acessos (usuários) e editar informações existentes.</p>
+            <p>Cada usuário tem um papel: <strong>Admin</strong> (acesso total), <strong>Gestor</strong> (gerencia projetos e clientes) ou <strong>Cliente</strong> (visualiza e aprova seus projetos).</p>
+            <p>A senha de cada usuário é exibida na listagem para facilitar o compartilhamento de acesso.</p>
+          </SobreSection>
+
+          <SobreSection title="Notificações">
+            <p>O ícone do sino no topo mostra notificações em tempo real. Você recebe notificações quando:</p>
+            <p>• Um cliente aprova ou pede alteração em um post</p>
+            <p>• Um cliente edita observações do texto ou da imagem</p>
+            <p>• Um cliente envia uma mensagem na comunicação</p>
+          </SobreSection>
+        </>
+      ) : (
+        <>
+          <SobreSection title="Como ver seus projetos">
+            <p>Na tela <strong>Home</strong>, você vê um resumo dos seus projetos com a barra de progresso mostrando quantos posts já foram aprovados.</p>
+            <p>Clique em qualquer projeto para ver todos os posts. Na aba <strong>Projetos</strong>, navegue entre os posts e formatos disponíveis.</p>
+          </SobreSection>
+
+          <SobreSection title="Como aprovar ou pedir alteração">
+            <p>Selecione o post e o formato desejado (Feed, Story ou Vídeo/Reels). Veja a mídia enviada pelo gestor e leia o copy proposto.</p>
+            <p>Se estiver tudo certo, clique em <strong>"Aprovar"</strong>. Se algo precisa mudar, clique em <strong>"Pedir alteração"</strong>.</p>
+          </SobreSection>
+
+          <SobreSection title="Obs. do texto e Obs. da imagem">
+            <p>Use esses campos para detalhar exatamente o que precisa mudar:</p>
+            <p>• <strong>Obs. do texto:</strong> Problemas no copy, tom de voz, informações incorretas, etc.</p>
+            <p>• <strong>Obs. da imagem:</strong> Ajustes visuais, cores, posicionamento, troca de foto, etc.</p>
+            <p>O gestor receberá uma notificação assim que você escrever.</p>
+          </SobreSection>
+
+          <SobreSection title="Comunicação">
+            <p>Cada post tem uma área de chat onde você pode conversar diretamente com o gestor sobre aquele conteúdo.</p>
+            <p>Use para tirar dúvidas, dar feedback detalhado ou alinhar ideias. Todas as mensagens ficam salvas com data e horário.</p>
+          </SobreSection>
+
+          <SobreSection title="Feed Preview">
+            <p>Clique em <strong>"Ver feed"</strong> para visualizar como os posts vão ficar no feed do Instagram. Você pode ver em diferentes proporções: 4:5 (retrato), 1:1 (quadrado) e 3:4.</p>
+            <p>Clique em um post no grid para ver os detalhes e navegar entre as imagens do carrossel.</p>
+          </SobreSection>
+
+          <SobreSection title="Notificações">
+            <p>O ícone do sino no topo mostra suas notificações. Você recebe avisos quando:</p>
+            <p>• Novas mídias são enviadas para seus projetos</p>
+            <p>• O gestor altera o status de um post</p>
+            <p>• O gestor edita observações ou envia mensagens</p>
+          </SobreSection>
+
+          <SobreSection title="Configurações">
+            <p>Na aba <strong>Config.</strong>, você pode trocar sua foto de perfil e alternar entre modo claro e escuro.</p>
+          </SobreSection>
+        </>
+      )}
+
+      <div className="card text-center">
+        <p className="text-sm text-muted">Dúvidas? Entre em contato com a equipe A1 Studio.</p>
+        <p className="mt-1 text-xs text-muted">Versão 1.0 &middot; A1 Studio &copy; {new Date().getFullYear()}</p>
+      </div>
+    </div>
+  );
+}
 
 function SettingsView({ darkMode, setDarkMode, uploadProfilePhoto, user }: { darkMode: boolean; setDarkMode: (v: boolean) => void; uploadProfilePhoto: (f: File | null) => void; user: User }) {
   return (
