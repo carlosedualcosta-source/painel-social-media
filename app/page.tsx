@@ -104,6 +104,15 @@ export default function Home() {
   const [newClientTag, setNewClientTag] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" | "info" } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ title: string; msg: string; onConfirm: () => void } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showToast(msg: string, type: "success" | "error" | "info" = "success") {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ msg, type });
+    toastTimer.current = setTimeout(() => setToast(null), 3500);
+  }
 
   const canManage = data.user?.role === "admin" || data.user?.role === "gestor";
   const activeProject = data.projects.find((p) => p.id === activeProjectId) ?? data.projects[0];
@@ -152,32 +161,38 @@ export default function Home() {
     return d;
   }
 
-  async function login() { const d = await action("login", { email: loginEmail, password: loginPassword }); if (d?.user) setActiveView("home"); }
-  async function logout() { await action("logout"); setData(emptyData); setActiveView("home"); }
+  async function login() { const d = await action("login", { email: loginEmail, password: loginPassword }); if (d?.user) { setActiveView("home"); showToast("Login realizado com sucesso!"); } }
+  async function logout() { await action("logout"); setData(emptyData); setActiveView("home"); showToast("Você saiu do painel.", "info"); }
 
   async function createProject() {
     const d = await action("createProject", { name: newProjectName, period: newProjectPeriod || newProjectName, clientId: newProjectClientId, postCount: newProjectCount });
-    if (d) { setNewProjectName(""); setNewProjectPeriod(""); setActiveView("projetos"); }
+    if (d) { setNewProjectName(""); setNewProjectPeriod(""); setActiveView("projetos"); showToast("Projeto criado com sucesso!"); }
   }
 
   async function createPost() {
     if (!activeProject || postMutation) return;
     setPostMutation("create");
-    try { const d = await action("createPost", { projectId: activeProject.id }); if (d?.createdPostId) setActivePostId(String(d.createdPostId)); } finally { setPostMutation(null); }
+    try { const d = await action("createPost", { projectId: activeProject.id }); if (d?.createdPostId) { setActivePostId(String(d.createdPostId)); showToast("Post criado!"); } } finally { setPostMutation(null); }
   }
 
-  async function deletePost() {
+  function deletePost() {
     if (!activePost || !activeProject || postMutation) return;
-    setPostMutation("delete");
-    try {
-      const d = await action("deletePost", { postId: activePost.id });
-      if (d?.projects) { const np = d.projects.find((p: Project) => p.id === activeProject.id); setActivePostId(np?.posts[0]?.id ?? ""); }
-    } finally { setPostMutation(null); }
+    setConfirmModal({ title: "Apagar post", msg: `Tem certeza que deseja apagar "${activePost.title}"? Isso não pode ser desfeito.`, onConfirm: async () => {
+      setConfirmModal(null); setPostMutation("delete");
+      try {
+        const d = await action("deletePost", { postId: activePost.id });
+        if (d?.projects) { const np = d.projects.find((p: Project) => p.id === activeProject.id); setActivePostId(np?.posts[0]?.id ?? ""); }
+        showToast("Post apagado.", "info");
+      } finally { setPostMutation(null); }
+    }});
   }
 
-  async function createUser() { const d = await action("createUser", newUser); if (d) setNewUser({ name: "", email: "", password: "", role: "cliente", clientId: data.clients[0]?.id ?? "" }); }
-  async function deleteUser(userId: string) { await action("deleteUser", { userId }); }
-  async function createClient() { const d = await action("createClient", { name: newClientName, tag: newClientTag }); if (d) { setNewClientName(""); setNewClientTag(""); } }
+  async function createUser() { const d = await action("createUser", newUser); if (d) { setNewUser({ name: "", email: "", password: "", role: "cliente", clientId: data.clients[0]?.id ?? "" }); showToast("Usuário criado com sucesso!"); } }
+  function deleteUser(userId: string) {
+    const u = data.users.find((x) => x.id === userId);
+    setConfirmModal({ title: "Apagar usuário", msg: `Tem certeza que deseja apagar "${u?.name ?? "este usuário"}"? Isso não pode ser desfeito.`, onConfirm: async () => { setConfirmModal(null); await action("deleteUser", { userId }); showToast("Usuário apagado.", "info"); } });
+  }
+  async function createClient() { const d = await action("createClient", { name: newClientName, tag: newClientTag }); if (d) { setNewClientName(""); setNewClientTag(""); showToast("Cliente criado com sucesso!"); } }
 
   async function uploadFiles(files: FileList | File[] | null) {
     if (!files || !activeItem || uploadingMedia) return;
@@ -185,7 +200,7 @@ export default function Home() {
     if (sel.length === 0) { setError("Envie imagens ou videos."); return; }
     setError(""); setUploadingMedia(true);
     const form = new FormData(); form.append("formatId", activeItem.id); sel.forEach((f) => form.append("files", f));
-    try { const res = await fetch("/api/upload", { method: "POST", credentials: "include", body: form }); const r = await res.json(); if (!res.ok) { setError(r.error ?? "Erro no upload."); return; } await refresh(); } finally { setUploadingMedia(false); }
+    try { const res = await fetch("/api/upload", { method: "POST", credentials: "include", body: form }); const r = await res.json(); if (!res.ok) { setError(r.error ?? "Erro no upload."); return; } await refresh(); showToast(`${sel.length} arquivo(s) enviado(s)!`); } finally { setUploadingMedia(false); }
   }
 
   async function uploadProfilePhoto(file: File | null) {
@@ -198,11 +213,12 @@ export default function Home() {
   async function saveFormat(fields: Partial<FormatItem>) {
     if (!activeItem) return;
     await action("updateFormat", { formatId: activeItem.id, copy: fields.copy ?? activeItem.copy, copyNotes: fields.copyNotes ?? activeItem.copyNotes, teamNotes: fields.teamNotes ?? activeItem.teamNotes, status: fields.status ?? activeItem.status });
+    if (fields.status && fields.status !== activeItem.status) showToast(`Status alterado para ${statusLabels[fields.status]}.`);
   }
 
   async function addComment() {
     if (!activeItem || !commentDraft.trim()) return;
-    const d = await action("addComment", { formatId: activeItem.id, text: commentDraft }); if (d) setCommentDraft("");
+    const d = await action("addComment", { formatId: activeItem.id, text: commentDraft }); if (d) { setCommentDraft(""); showToast("Mensagem enviada!"); }
   }
 
   if (loading) {
@@ -218,7 +234,7 @@ export default function Home() {
 
   if (!data.user) {
     return (
-      <main className="flex min-h-screen min-h-dvh flex-col lg:flex-row">
+      <main className={`flex min-h-screen min-h-dvh flex-col lg:flex-row ${darkMode ? "dark" : ""}`}>
         <div className="hidden flex-1 flex-col justify-between bg-[#1A1A1A] p-8 text-white lg:flex lg:p-16 overflow-hidden relative">
           <div className="login-bg-glow" />
           <A1Logo className="h-10 w-auto self-start login-fade-in" white />
@@ -231,7 +247,7 @@ export default function Home() {
           <div />
         </div>
 
-        <div className="flex flex-1 items-center justify-center bg-surface p-6 sm:p-8">
+        <div className="flex flex-1 items-center justify-center bg-surface text-on-surface p-6 sm:p-8">
           <form className="w-full max-w-sm animate-in" onSubmit={(e) => { e.preventDefault(); login(); }}>
             <div className="mb-8 lg:hidden flex flex-col items-center gap-3">
               <A1Logo className="h-9 w-auto" />
@@ -362,6 +378,28 @@ export default function Home() {
           </footer>
         </div>
       </div>
+
+      {/* Toast */}
+      {toast && (
+        <div className={`toast-container ${toast.type === "success" ? "toast-success" : toast.type === "error" ? "toast-error" : "toast-info"}`} onClick={() => setToast(null)}>
+          <Ic d={toast.type === "success" ? icons.check : toast.type === "error" ? icons.x : icons.bell} size={16} />
+          <span>{toast.msg}</span>
+        </div>
+      )}
+
+      {/* Confirm Modal */}
+      {confirmModal && (
+        <div className="confirm-overlay" onClick={() => setConfirmModal(null)}>
+          <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display font-bold text-lg">{confirmModal.title}</h3>
+            <p className="mt-2 text-sm text-secondary">{confirmModal.msg}</p>
+            <div className="mt-5 flex gap-3 justify-end">
+              <button className="btn btn-outline text-sm" onClick={() => setConfirmModal(null)}>Cancelar</button>
+              <button className="btn btn-danger text-sm" onClick={confirmModal.onConfirm}>Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -406,6 +444,7 @@ function HomeView({ data, canManage, setActiveView, setActiveProjectId, setActiv
                   <span className="text-muted group-hover:text-accent transition"><Ic d={icons.arrowRight} size={16} /></span>
                 </div>
                 <p className="mt-1.5 text-xs text-muted">{p.period} &middot; {p.posts.length} posts</p>
+                <ProjectProgress posts={p.posts} />
               </button>
             ))}
           </div>
@@ -424,11 +463,29 @@ function Metric({ label, value, accent }: { label: string; value: number; accent
   );
 }
 
+function ProjectProgress({ posts }: { posts: Post[] }) {
+  const total = posts.length * 3;
+  if (total === 0) return null;
+  const approved = posts.reduce((s, p) => s + Object.values(p.formats).filter((f) => f.status === "aprovado").length, 0);
+  const pct = Math.round((approved / total) * 100);
+  return (
+    <div className="mt-2.5">
+      <div className="flex items-center justify-between text-[10px] text-muted mb-1">
+        <span>{approved}/{total} aprovados</span>
+        <span className="font-semibold">{pct}%</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-sunken overflow-hidden">
+        <div className="h-full rounded-full bg-accent transition-all duration-500" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 /* ──────────────────── PROJECTS ──────────────────── */
 
 function ProjectsView(props: {
   activeClient?: Client; activeFormat: FormatKey; activeItem: FormatItem; activePost: Post; activeProject: Project; canManage: boolean; projects: Project[]; clients: Client[];
-  commentDraft: string; createPost: () => Promise<void>; deletePost: () => Promise<void>; postMutation: "create" | "delete" | null; uploadingMedia: boolean; addComment: () => void;
+  commentDraft: string; createPost: () => Promise<void>; deletePost: () => void; postMutation: "create" | "delete" | null; uploadingMedia: boolean; addComment: () => void;
   saveFormat: (fields: Partial<FormatItem>) => void; savePostTitle: (title: string) => void; saveMediaNotes: (mediaId: string, imageNotes: string) => void; deleteMedia: (mediaId: string) => void;
   setActiveFormat: (f: FormatKey) => void; setActivePostId: (id: string) => void; setActiveProjectId: (id: string) => void; setStatus: (s: ApprovalStatus) => void;
   setCommentDraft: (v: string) => void; uploadFiles: (files: FileList | File[] | null) => Promise<void>; userRole: Role;
@@ -542,8 +599,13 @@ function ProjectsView(props: {
             </div>
           </div>
           <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-            {props.activeProject.posts.map((post) => (
-              <button key={post.id} className={`rounded-xl border p-2 sm:p-2.5 text-left transition ${post.id === props.activePost.id ? "border-accent bg-accent-subtle" : "border-outline hover:border-accent/40"}`} onClick={() => props.setActivePostId(post.id)}>
+            {props.activeProject.posts.map((post) => {
+              const statuses = Object.values(post.formats).map((f) => f.status);
+              const allApproved = statuses.every((s) => s === "aprovado");
+              const hasAlt = statuses.some((s) => s === "alteracao");
+              const borderColor = post.id === props.activePost.id ? "border-accent bg-accent-subtle" : allApproved ? "border-l-[3px] border-l-green-500 border-outline" : hasAlt ? "border-l-[3px] border-l-red-400 border-outline" : "border-outline hover:border-accent/40";
+              return (
+              <button key={post.id} className={`rounded-xl border p-2 sm:p-2.5 text-left transition ${borderColor}`} onClick={() => props.setActivePostId(post.id)}>
                 <span className="text-[11px] font-bold text-accent">#{String(post.number).padStart(2, "0")}</span>
                 <span className="mt-0.5 block truncate text-[11px] sm:text-xs font-semibold">{post.title}</span>
                 <span className="mt-1 flex gap-1 flex-wrap">
@@ -552,7 +614,8 @@ function ProjectsView(props: {
                   ))}
                 </span>
               </button>
-            ))}
+              );
+            })}
           </div>
         </div>
 
