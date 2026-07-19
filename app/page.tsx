@@ -7,7 +7,7 @@ type View = "home" | "projetos" | "novoProjeto" | "usuarios" | "configuracoes";
 type FormatKey = "feed" | "story" | "video";
 type ApprovalStatus = "rascunho" | "em_revisao" | "alteracao" | "aprovado";
 
-type User = { id: string; name: string; email: string; role: Role; clientId: string | null; avatarUrl: string | null };
+type User = { id: string; name: string; email: string; password?: string; role: Role; clientId: string | null; avatarUrl: string | null };
 type Client = { id: string; name: string; tag: string };
 type MediaAsset = { id: string; name: string; type: "image" | "video"; url: string; imageNotes: string };
 type Comment = { id: string; author: string; role: Role; text: string; createdAt?: string };
@@ -935,7 +935,7 @@ function UsersView({ clients, users, newUser, setNewUser, createUser, deleteUser
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#FF6A13] text-xs font-bold text-white">{u.name.slice(0, 2).toUpperCase()}</span>
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold truncate">{u.name}</p>
-                      <p className="text-[11px] text-muted truncate">{u.email}</p>
+                      <p className="text-[11px] text-muted truncate">{u.email} · Senha: {u.password ?? "—"}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 ml-12 sm:ml-0">

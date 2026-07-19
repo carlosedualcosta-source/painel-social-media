@@ -226,7 +226,7 @@ async function loadAppData(user: PublicUser | null) {
 
   let users: unknown[] = [];
   if (canManage(user)) {
-    const usersResult = await db.execute("SELECT id, name, email, role, client_id as clientId, avatar_url as avatarUrl FROM users ORDER BY created_at DESC");
+    const usersResult = await db.execute("SELECT id, name, email, password, role, client_id as clientId, avatar_url as avatarUrl FROM users ORDER BY created_at DESC");
     users = usersResult.rows;
   }
 
