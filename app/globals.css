@@ -215,6 +215,42 @@ h1, h2, h3, h4, h5, h6 {
   width: 72px;
 }
 
+@media (max-width: 767px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 50;
+    width: 280px;
+    height: 100vh;
+    height: 100dvh;
+    transform: translateX(-100%);
+    transition: transform 250ms ease;
+  }
+  .sidebar.collapsed {
+    width: 280px;
+    transform: translateX(-100%);
+  }
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 40;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 250ms;
+}
+
+.sidebar-backdrop.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .sidebar-link {
   display: flex;
   align-items: center;
@@ -253,6 +289,13 @@ h1, h2, h3, h4, h5, h6 {
   border: 1px solid var(--outline);
   border-radius: 14px;
   padding: 1.25rem;
+}
+
+@media (max-width: 639px) {
+  .card {
+    padding: 1rem;
+    border-radius: 12px;
+  }
 }
 
 .card-flush {
